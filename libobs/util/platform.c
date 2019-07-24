@@ -25,6 +25,7 @@
 #include "bmem.h"
 #include "utf8.h"
 #include "dstr.h"
+#include <inttypes.h>
 
 FILE *os_wfopen(const wchar_t *path, const char *mode)
 {
@@ -727,12 +728,32 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 	dstr_init_copy(&sf, format);
 
+	// Call the os_gettime_ns() function to get the current time in nanoseconds. I found this function referenced in platform.h.
+	uint64_t nanosecondsTime = os_gettime_ns();
+
+	// Solution 1:
+	// length of 2**64 - 1, +1 for nul.
+	char nanosecondsTimeString[21];
+	//sprintf(nanosecondsTimeString, "0x%016" PRIx64,	(uint64_t)nanosecondsTime);
+
+	// Solution 2:
+	//char ses[8];
+	//ltoa(nanosecondsTime, nanosecondsTimeString, 10);
+
+	// Solution 3:
+	// copy to buffer
+	sprintf(nanosecondsTimeString, "%" PRIu64, nanosecondsTime);
+
+	//TODO: integrate the string into the filename. Get rid of the other delimiters
+	// basically need to figure out the loop
+
 	while (pos < sf.len) {
+		// Iterate through each spec_count and parse for the symbol
 		for (size_t i = 0; i < spec_count && !convert[0]; i++) {
 			size_t len = strlen(spec[i][0]);
 
 			const char *cmp = sf.array + pos;
-
+			// Check to see if the current string matches the spec
 			if (astrcmp_n(cmp, spec[i][0], len) == 0) {
 				if (strlen(spec[i][1]))
 					strftime(convert, sizeof(convert),
@@ -741,7 +762,9 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 					strftime(convert, sizeof(convert),
 						 spec[i][0], cur_time);
 
+
 				dstr_copy(&c, convert);
+				// If every thing works out, replace the formatting symbol with the text
 				if (c.len && valid_string(c.array))
 					replace_text(&sf, pos, len, convert);
 			}
@@ -757,9 +780,11 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		}
 	}
 
+	// Remove spaces if needed
 	if (!space)
 		dstr_replace(&sf, " ", "_");
 
+	// Append file extension
 	dstr_cat_ch(&sf, '.');
 	dstr_cat(&sf, extension);
 	dstr_free(&c);
