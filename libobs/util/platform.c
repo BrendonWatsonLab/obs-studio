@@ -769,3 +769,14 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 	return sf.array;
 }
+
+
+///**
+// * Returns the current time in microseconds.
+// */
+//long getMicrotime()
+//{
+//	struct timeval currentTime;
+//	gettimeofday(&currentTime, NULL);
+//	return currentTime.tv_sec * (int)1e6 + currentTime.tv_usec;
+//}
