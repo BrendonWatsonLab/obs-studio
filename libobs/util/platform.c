@@ -710,7 +710,9 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 	struct tm *cur_time;
 	cur_time = localtime(&now);
 
-	const size_t spec_count = 23;
+	// the spec consists of arrays of length two. For format strings that match the C "strftime(...)" function, the second element is blank to indicate that it need not be replaced.
+	// Otherwise, it is replaced with the C strftime equivalent formatting command before being ran through strftime.
+	const size_t spec_count = 24;
 	static const char *spec[][2] = {
 		{"%CCYY", "%Y"}, {"%YY", "%y"}, {"%MM", "%m"}, {"%DD", "%d"},
 		{"%hh", "%H"},   {"%mm", "%M"}, {"%ss", "%S"}, {"%%", "%%"},
@@ -718,55 +720,77 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		{"%a", ""},      {"%A", ""},    {"%b", ""},    {"%B", ""},
 		{"%d", ""},      {"%H", ""},    {"%I", ""},    {"%m", ""},
 		{"%M", ""},      {"%p", ""},    {"%S", ""},    {"%y", ""},
-		{"%Y", ""},      {"%z", ""},    {"%Z", ""},
+		{"%Y", ""},      {"%z", ""},    {"%Z", ""},    {"%NANOSEC", ""},
 	};
 
+	// the convert[] char array holds the temporary C-strings that result from strftime parsing a porition of the format string to its resultant value.
 	char convert[128] = {0};
+	// the "dstr" structure is a OBS-Studio specific dynamic string struct.
+	// sf: holds the format string
 	struct dstr sf;
+	// c: holds the output
 	struct dstr c = {0};
 	size_t pos = 0;
 
+	// make a copy of the "format" string in the "sf" dstr
 	dstr_init_copy(&sf, format);
 
 	// Call the os_gettime_ns() function to get the current time in nanoseconds. I found this function referenced in platform.h.
-	uint64_t nanosecondsTime = os_gettime_ns();
+	//uint64_t nanosecondsTime = os_gettime_ns();
 
-	// Solution 1:
+	//uint64_t nanosecondsTime = os_gettimeofday_ns();
+
+
 	// length of 2**64 - 1, +1 for nul.
-	char nanosecondsTimeString[21];
-	//sprintf(nanosecondsTimeString, "0x%016" PRIx64,	(uint64_t)nanosecondsTime);
-
-	// Solution 2:
-	//char ses[8];
-	//ltoa(nanosecondsTime, nanosecondsTimeString, 10);
-
-	// Solution 3:
+	char nanosecondsTimeString[128];
 	// copy to buffer
-	sprintf(nanosecondsTimeString, "%" PRIu64, nanosecondsTime);
+	//sprintf(nanosecondsTimeString, "%" PRIu64, nanosecondsTime);
+
+
+	os_getcurrenttime_string(nanosecondsTimeString);
 
 	//TODO: integrate the string into the filename. Get rid of the other delimiters
 	// basically need to figure out the loop
 
+	// Iterate through the format string (which has been copied in the "sf" dstr structure.
 	while (pos < sf.len) {
 		// Iterate through each spec_count and parse for the symbol
+		// Stops if convert[0] is ever 1.
 		for (size_t i = 0; i < spec_count && !convert[0]; i++) {
+			// Get the length of the spec string.
 			size_t len = strlen(spec[i][0]);
 
+			// Get the pointer to the start of the format string
 			const char *cmp = sf.array + pos;
-			// Check to see if the current string matches the spec
+			// Check to see if the currently considered portion of the string matches the spec
+			// astrcmp_n: "String comparison function for a specific number of characters."
 			if (astrcmp_n(cmp, spec[i][0], len) == 0) {
-				if (strlen(spec[i][1]))
-					strftime(convert, sizeof(convert),
-						 spec[i][1], cur_time);
-				else
-					strftime(convert, sizeof(convert),
-						 spec[i][0], cur_time);
-
-
+				if (strlen(spec[i][1])) {
+					// If the spec's second element has a non-zero length, use that
+					strftime(convert, sizeof(convert), spec[i][1], cur_time);
+				}					
+				else {
+					// Check if we're dealing with the custom Nanosecond string.
+					if (strcmp(spec[i][0], "%NANOSEC") == 0) {
+						// Custom nanosecond string
+						strncpy(convert,
+							nanosecondsTimeString,
+							sizeof(nanosecondsTimeString));
+						
+					} else {
+						// Otherwise, use the spec's first element
+						strftime(convert, sizeof(convert), spec[i][0], cur_time);
+					}
+				}
+					
+				// copies the string array "convert" to the dynamic string (dstr) "c".
 				dstr_copy(&c, convert);
 				// If every thing works out, replace the formatting symbol with the text
-				if (c.len && valid_string(c.array))
+				if (c.len && valid_string(c.array)) {
+					// replaces the text in "sf" with the new_text in "convert"
 					replace_text(&sf, pos, len, convert);
+					//TODO: how is "c" used? Just to check?
+				}
 			}
 		}
 
