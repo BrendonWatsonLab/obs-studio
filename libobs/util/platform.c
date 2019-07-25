@@ -720,7 +720,7 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		{"%a", ""},      {"%A", ""},    {"%b", ""},    {"%B", ""},
 		{"%d", ""},      {"%H", ""},    {"%I", ""},    {"%m", ""},
 		{"%M", ""},      {"%p", ""},    {"%S", ""},    {"%y", ""},
-		{"%Y", ""},      {"%z", ""},    {"%Z", ""},    {"%NANOSEC", ""},
+		{"%Y", ""},      {"%z", ""},    {"%Z", ""},    {"%FULLDATETIME", ""},
 	};
 
 	// the convert[] char array holds the temporary C-strings that result from strftime parsing a porition of the format string to its resultant value.
@@ -735,22 +735,10 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 	// make a copy of the "format" string in the "sf" dstr
 	dstr_init_copy(&sf, format);
 
-	// Call the os_gettime_ns() function to get the current time in nanoseconds. I found this function referenced in platform.h.
-	//uint64_t nanosecondsTime = os_gettime_ns();
-
-	//uint64_t nanosecondsTime = os_gettimeofday_ns();
-
-
 	// length of 2**64 - 1, +1 for nul.
-	char nanosecondsTimeString[128];
+	char completeTimeString[128];
 	// copy to buffer
-	//sprintf(nanosecondsTimeString, "%" PRIu64, nanosecondsTime);
-
-
-	os_getcurrenttime_string(nanosecondsTimeString);
-
-	//TODO: integrate the string into the filename. Get rid of the other delimiters
-	// basically need to figure out the loop
+	os_getcurrenttime_string(completeTimeString);
 
 	// Iterate through the format string (which has been copied in the "sf" dstr structure.
 	while (pos < sf.len) {
@@ -771,11 +759,11 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 				}					
 				else {
 					// Check if we're dealing with the custom Nanosecond string.
-					if (strcmp(spec[i][0], "%NANOSEC") == 0) {
+					if (strcmp(spec[i][0], "%FULLDATETIME") == 0) {
 						// Custom nanosecond string
 						strncpy(convert,
-							nanosecondsTimeString,
-							sizeof(nanosecondsTimeString));
+							completeTimeString,
+							sizeof(completeTimeString));
 						
 					} else {
 						// Otherwise, use the spec's first element
