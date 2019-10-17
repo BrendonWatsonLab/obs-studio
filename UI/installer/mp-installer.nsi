@@ -49,7 +49,7 @@ RequestExecutionLevel admin
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE PreReqCheck
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "C:\Users\halechr\repo\obs-studio\build64\rundir\Release\data\obs-studio\license\gplv2.txt"
+!insertmacro MUI_PAGE_LICENSE "license\gplv2.txt"
 !insertmacro MUI_PAGE_DIRECTORY
 !ifdef FULL
 	!insertmacro MUI_PAGE_COMPONENTS
