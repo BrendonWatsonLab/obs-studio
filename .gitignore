@@ -97,3 +97,5 @@ tags
 .DS_Store
 */.DS_Store
 */**/.DS_Store
+*/desktop.ini
+desktop.ini
