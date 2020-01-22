@@ -57,6 +57,28 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 
 	obs_data_release(privData);
 
+	OBSBasic *main = reinterpret_cast<OBSBasic *>(App()->GetMainWindow());
+	const char *id = obs_source_get_id(source);
+
+	QLabel *iconLabel = nullptr;
+	if (tree->iconsVisible) {
+		QIcon icon;
+
+		if (strcmp(id, "scene") == 0)
+			icon = main->GetSceneIcon();
+		else if (strcmp(id, "group") == 0)
+			icon = main->GetGroupIcon();
+		else
+			icon = main->GetSourceIcon(id);
+
+		QPixmap pixmap = icon.pixmap(QSize(16, 16));
+
+		iconLabel = new QLabel();
+		iconLabel->setPixmap(pixmap);
+		iconLabel->setFixedSize(16, 16);
+		iconLabel->setStyleSheet("background: none");
+	}
+
 	vis = new VisibilityCheckBox();
 	vis->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
 	vis->setFixedSize(16, 16);
@@ -80,11 +102,15 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_)
 #endif
 
 	boxLayout = new QHBoxLayout();
-	boxLayout->setContentsMargins(1, 1, 1, 1);
-	boxLayout->setSpacing(1);
+
+	boxLayout->setContentsMargins(0, 0, 0, 0);
+	if (iconLabel) {
+		boxLayout->addWidget(iconLabel);
+		boxLayout->addSpacing(2);
+	}
 	boxLayout->addWidget(label);
 	boxLayout->addWidget(vis);
-	boxLayout->setSpacing(2);
+	boxLayout->addSpacing(1);
 	boxLayout->addWidget(lock);
 #ifdef __APPLE__
 	/* Hack: Fixes a bug where scrollbars would be above the lock icon */
@@ -263,6 +289,27 @@ void SourceTreeItem::mouseDoubleClickEvent(QMouseEvent *event)
 	}
 }
 
+void SourceTreeItem::enterEvent(QEvent *event)
+{
+	QWidget::enterEvent(event);
+
+	OBSBasicPreview *preview = OBSBasicPreview::Get();
+
+	std::lock_guard<std::mutex> lock(preview->selectMutex);
+	preview->hoveredPreviewItems.clear();
+	preview->hoveredPreviewItems.push_back(sceneitem);
+}
+
+void SourceTreeItem::leaveEvent(QEvent *event)
+{
+	QWidget::leaveEvent(event);
+
+	OBSBasicPreview *preview = OBSBasicPreview::Get();
+
+	std::lock_guard<std::mutex> lock(preview->selectMutex);
+	preview->hoveredPreviewItems.clear();
+}
+
 bool SourceTreeItem::IsEditing()
 {
 	return editor != nullptr;
@@ -276,7 +323,7 @@ void SourceTreeItem::EnterEditMode()
 	editor->setStyleSheet("background: none");
 	editor->selectAll();
 	editor->installEventFilter(this);
-	boxLayout->insertWidget(1, editor);
+	boxLayout->insertWidget(2, editor);
 	setFocusProxy(editor);
 }
 
@@ -295,7 +342,7 @@ void SourceTreeItem::ExitEditMode(bool save)
 	delete editor;
 	editor = nullptr;
 	setFocusPolicy(Qt::NoFocus);
-	boxLayout->insertWidget(1, label);
+	boxLayout->insertWidget(2, label);
 
 	/* ----------------------------------------- */
 	/* check for empty string                    */
@@ -342,25 +389,13 @@ bool SourceTreeItem::eventFilter(QObject *object, QEvent *event)
 	if (editor != object)
 		return false;
 
-	if (event->type() == QEvent::KeyPress) {
-		QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
-
-		switch (keyEvent->key()) {
-		case Qt::Key_Escape:
-			QMetaObject::invokeMethod(this, "ExitEditMode",
-						  Qt::QueuedConnection,
-						  Q_ARG(bool, false));
-			return true;
-		case Qt::Key_Tab:
-		case Qt::Key_Backtab:
-		case Qt::Key_Enter:
-		case Qt::Key_Return:
-			QMetaObject::invokeMethod(this, "ExitEditMode",
-						  Qt::QueuedConnection,
-						  Q_ARG(bool, true));
-			return true;
-		}
-	} else if (event->type() == QEvent::FocusOut) {
+	if (LineEditCanceled(event)) {
+		QMetaObject::invokeMethod(this, "ExitEditMode",
+					  Qt::QueuedConnection,
+					  Q_ARG(bool, false));
+		return true;
+	}
+	if (LineEditChanged(event)) {
 		QMetaObject::invokeMethod(this, "ExitEditMode",
 					  Qt::QueuedConnection,
 					  Q_ARG(bool, true));
@@ -934,6 +969,21 @@ SourceTree::SourceTree(QWidget *parent_) : QListView(parent_)
 	UpdateNoSourcesMessage();
 	connect(App(), &OBSApp::StyleChanged, this,
 		&SourceTree::UpdateNoSourcesMessage);
+	connect(App(), &OBSApp::StyleChanged, this, &SourceTree::UpdateIcons);
+}
+
+void SourceTree::UpdateIcons()
+{
+	SourceTreeModel *stm = GetStm();
+	stm->SceneChanged();
+}
+
+void SourceTree::SetIconsVisible(bool visible)
+{
+	SourceTreeModel *stm = GetStm();
+
+	iconsVisible = visible;
+	stm->SceneChanged();
 }
 
 void SourceTree::ResetWidgets()
@@ -1293,19 +1343,22 @@ void SourceTree::mouseMoveEvent(QMouseEvent *event)
 
 	OBSBasicPreview *preview = OBSBasicPreview::Get();
 
-	if (item)
-		preview->hoveredListItem = item->sceneitem;
-	else
-		preview->hoveredListItem = nullptr;
-
 	QListView::mouseMoveEvent(event);
+
+	std::lock_guard<std::mutex> lock(preview->selectMutex);
+	preview->hoveredPreviewItems.clear();
+	if (item)
+		preview->hoveredPreviewItems.push_back(item->sceneitem);
 }
 
 void SourceTree::leaveEvent(QEvent *event)
 {
 	OBSBasicPreview *preview = OBSBasicPreview::Get();
-	preview->hoveredListItem = nullptr;
+
 	QListView::leaveEvent(event);
+
+	std::lock_guard<std::mutex> lock(preview->selectMutex);
+	preview->hoveredPreviewItems.clear();
 }
 
 void SourceTree::selectionChanged(const QItemSelection &selected,

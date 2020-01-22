@@ -306,6 +306,7 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->openStatsOnStartup,   CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->warnBeforeStreamStart,CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->warnBeforeStreamStop, CHECK_CHANGED,  GENERAL_CHANGED);
+	HookWidget(ui->warnBeforeRecordStop, CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->hideProjectorCursor,  CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->projectorAlwaysOnTop, CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->recordWhenStreaming,  CHECK_CHANGED,  GENERAL_CHANGED);
@@ -336,6 +337,7 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->customServer,         EDIT_CHANGED,   STREAM1_CHANGED);
 	HookWidget(ui->key,                  EDIT_CHANGED,   STREAM1_CHANGED);
 	HookWidget(ui->bandwidthTestEnable,  CHECK_CHANGED,  STREAM1_CHANGED);
+	HookWidget(ui->twitchAddonDropdown,  COMBO_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->useAuth,              CHECK_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->authUsername,         EDIT_CHANGED,   STREAM1_CHANGED);
 	HookWidget(ui->authPw,               EDIT_CHANGED,   STREAM1_CHANGED);
@@ -380,6 +382,12 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->advOutRecTrack4,      CHECK_CHANGED,  OUTPUTS_CHANGED);
 	HookWidget(ui->advOutRecTrack5,      CHECK_CHANGED,  OUTPUTS_CHANGED);
 	HookWidget(ui->advOutRecTrack6,      CHECK_CHANGED,  OUTPUTS_CHANGED);
+	HookWidget(ui->flvTrack1,            CHECK_CHANGED,  OUTPUTS_CHANGED);
+	HookWidget(ui->flvTrack2,            CHECK_CHANGED,  OUTPUTS_CHANGED);
+	HookWidget(ui->flvTrack3,            CHECK_CHANGED,  OUTPUTS_CHANGED);
+	HookWidget(ui->flvTrack4,            CHECK_CHANGED,  OUTPUTS_CHANGED);
+	HookWidget(ui->flvTrack5,            CHECK_CHANGED,  OUTPUTS_CHANGED);
+	HookWidget(ui->flvTrack6,            CHECK_CHANGED,  OUTPUTS_CHANGED);
 	HookWidget(ui->advOutFFType,         COMBO_CHANGED,  OUTPUTS_CHANGED);
 	HookWidget(ui->advOutFFRecPath,      EDIT_CHANGED,   OUTPUTS_CHANGED);
 	HookWidget(ui->advOutFFNoSpace,      CHECK_CHANGED,  OUTPUTS_CHANGED);
@@ -463,9 +471,20 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->bindToIP,             COMBO_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->enableNewSocketLoop,  CHECK_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->enableLowLatencyMode, CHECK_CHANGED,  ADV_CHANGED);
-	HookWidget(ui->disableFocusHotkeys,  CHECK_CHANGED,  ADV_CHANGED);
+	HookWidget(ui->hotkeyFocusType,      COMBO_CHANGED,  ADV_CHANGED);
 	HookWidget(ui->autoRemux,            CHECK_CHANGED,  ADV_CHANGED);
+	HookWidget(ui->dynBitrate,           CHECK_CHANGED,  ADV_CHANGED);
 	/* clang-format on */
+
+#define ADD_HOTKEY_FOCUS_TYPE(s)      \
+	ui->hotkeyFocusType->addItem( \
+		QTStr("Basic.Settings.Advanced.Hotkeys." s), s)
+
+	ADD_HOTKEY_FOCUS_TYPE("NeverDisableHotkeys");
+	ADD_HOTKEY_FOCUS_TYPE("DisableHotkeysInFocus");
+	ADD_HOTKEY_FOCUS_TYPE("DisableHotkeysOutOfFocus");
+
+#undef ADD_HOTKEY_FOCUS_TYPE
 
 	ui->simpleOutputVBitrate->setSingleStep(50);
 	ui->simpleOutputVBitrate->setSuffix(" Kbps");
@@ -741,16 +760,20 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 
 	UpdateAutomaticReplayBufferCheckboxes();
 
-	App()->EnableInFocusHotkeys(false);
+	on_baseResolution_editTextChanged(ui->baseResolution->currentText());
+
+	App()->DisableHotkeys();
+
+	channelIndex = ui->channelSetup->currentIndex();
+	sampleRateIndex = ui->sampleRate->currentIndex();
 }
 
 OBSBasicSettings::~OBSBasicSettings()
 {
-	bool disableHotkeysInFocus = config_get_bool(
-		App()->GlobalConfig(), "General", "DisableHotkeysInFocus");
 	delete ui->filenameFormatting->completer();
 	main->EnableOutputs(true);
-	App()->EnableInFocusHotkeys(!disableHotkeysInFocus);
+
+	App()->UpdateHotkeyFocusSetting();
 
 	EnableThreadedMessageBoxes(false);
 }
@@ -875,7 +898,7 @@ void OBSBasicSettings::LoadFormats()
 					audio ? AUDIO_STR : VIDEO_STR);
 
 			ui->advOutFFFormat->addItem(
-				itemText, qVariantFromValue(formatDesc));
+				itemText, QVariant::fromValue(formatDesc));
 		}
 
 		format = ff_format_desc_next(format);
@@ -898,7 +921,7 @@ static void AddCodec(QComboBox *combo, const ff_codec_desc *codec_desc)
 	CodecDesc cd(ff_codec_desc_name(codec_desc),
 		     ff_codec_desc_id(codec_desc));
 
-	combo->addItem(itemText, qVariantFromValue(cd));
+	combo->addItem(itemText, QVariant::fromValue(cd));
 }
 
 #define AV_ENCODER_DEFAULT_STR \
@@ -914,7 +937,7 @@ static void AddDefaultCodec(QComboBox *combo, const ff_format_desc *formatDesc,
 		combo->removeItem(existingIdx);
 
 	combo->addItem(QString("%1 (%2)").arg(cd.name, AV_ENCODER_DEFAULT_STR),
-		       qVariantFromValue(cd));
+		       QVariant::fromValue(cd));
 }
 
 #define AV_ENCODER_DISABLE_STR \
@@ -961,7 +984,7 @@ void OBSBasicSettings::ReloadCodecs(const ff_format_desc *formatDesc)
 	ui->advOutFFAEncoder->model()->sort(0);
 	ui->advOutFFVEncoder->model()->sort(0);
 
-	QVariant disable = qVariantFromValue(CodecDesc());
+	QVariant disable = QVariant::fromValue(CodecDesc());
 
 	ui->advOutFFAEncoder->insertItem(0, AV_ENCODER_DISABLE_STR, disable);
 	ui->advOutFFVEncoder->insertItem(0, AV_ENCODER_DISABLE_STR, disable);
@@ -1120,6 +1143,10 @@ void OBSBasicSettings::LoadGeneralSettings()
 	bool warnBeforeStreamStop = config_get_bool(
 		GetGlobalConfig(), "BasicWindow", "WarnBeforeStoppingStream");
 	ui->warnBeforeStreamStop->setChecked(warnBeforeStreamStop);
+
+	bool warnBeforeRecordStop = config_get_bool(
+		GetGlobalConfig(), "BasicWindow", "WarnBeforeStoppingRecord");
+	ui->warnBeforeRecordStop->setChecked(warnBeforeRecordStop);
 
 	bool hideProjectorCursor = config_get_bool(
 		GetGlobalConfig(), "BasicWindow", "HideProjectorCursor");
@@ -1293,10 +1320,13 @@ void OBSBasicSettings::ResetDownscales(uint32_t cx, uint32_t cy)
 	float outputAspect = float(out_cx) / float(out_cy);
 
 	bool closeAspect = close_float(baseAspect, outputAspect, 0.01f);
-	if (closeAspect)
+	if (closeAspect) {
 		ui->outputResolution->lineEdit()->setText(oldOutputRes);
-	else
+		on_outputResolution_editTextChanged(oldOutputRes);
+	} else {
 		ui->outputResolution->lineEdit()->setText(bestScale.c_str());
+		on_outputResolution_editTextChanged(bestScale.c_str());
+	}
 
 	ui->outputResolution->blockSignals(false);
 
@@ -1323,6 +1353,9 @@ void OBSBasicSettings::LoadDownscaleFilters()
 		QTStr("Basic.Settings.Video.DownscaleFilter.Bilinear"),
 		QT_UTF8("bilinear"));
 	ui->downscaleFilter->addItem(
+		QTStr("Basic.Settings.Video.DownscaleFilter.Area"),
+		QT_UTF8("area"));
+	ui->downscaleFilter->addItem(
 		QTStr("Basic.Settings.Video.DownscaleFilter.Bicubic"),
 		QT_UTF8("bicubic"));
 	ui->downscaleFilter->addItem(
@@ -1335,9 +1368,11 @@ void OBSBasicSettings::LoadDownscaleFilters()
 	if (astrcmpi(scaleType, "bilinear") == 0)
 		ui->downscaleFilter->setCurrentIndex(0);
 	else if (astrcmpi(scaleType, "lanczos") == 0)
-		ui->downscaleFilter->setCurrentIndex(2);
-	else
+		ui->downscaleFilter->setCurrentIndex(3);
+	else if (astrcmpi(scaleType, "area") == 0)
 		ui->downscaleFilter->setCurrentIndex(1);
+	else
+		ui->downscaleFilter->setCurrentIndex(2);
 }
 
 void OBSBasicSettings::LoadResolutionLists()
@@ -1672,6 +1707,7 @@ void OBSBasicSettings::LoadAdvOutputRecordingSettings()
 	const char *muxCustom =
 		config_get_string(main->Config(), "AdvOut", "RecMuxerCustom");
 	int tracks = config_get_int(main->Config(), "AdvOut", "RecTracks");
+	int flvTrack = config_get_int(main->Config(), "AdvOut", "FLVTrack");
 
 	int typeIndex = (astrcmpi(type, "FFmpeg") == 0) ? 1 : 0;
 	ui->advOutRecType->setCurrentIndex(typeIndex);
@@ -1690,6 +1726,30 @@ void OBSBasicSettings::LoadAdvOutputRecordingSettings()
 	ui->advOutRecTrack4->setChecked(tracks & (1 << 3));
 	ui->advOutRecTrack5->setChecked(tracks & (1 << 4));
 	ui->advOutRecTrack6->setChecked(tracks & (1 << 5));
+
+	switch (flvTrack) {
+	case 1:
+		ui->flvTrack1->setChecked(true);
+		break;
+	case 2:
+		ui->flvTrack2->setChecked(true);
+		break;
+	case 3:
+		ui->flvTrack3->setChecked(true);
+		break;
+	case 4:
+		ui->flvTrack4->setChecked(true);
+		break;
+	case 5:
+		ui->flvTrack5->setChecked(true);
+		break;
+	case 6:
+		ui->flvTrack6->setChecked(true);
+		break;
+	default:
+		ui->flvTrack1->setChecked(true);
+		break;
+	}
 }
 
 void OBSBasicSettings::LoadAdvOutputRecordingEncoderProperties()
@@ -2169,9 +2229,9 @@ void OBSBasicSettings::LoadAudioSettings()
 
 	const char *str;
 	if (sampleRate == 48000)
-		str = "48khz";
+		str = "48 kHz";
 	else
-		str = "44.1khz";
+		str = "44.1 kHz";
 
 	int sampleRateIdx = ui->sampleRate->findText(str);
 	if (sampleRateIdx != -1)
@@ -2243,6 +2303,10 @@ void OBSBasicSettings::LoadAdvancedSettings()
 	int rbTime = config_get_int(main->Config(), "AdvOut", "RecRBTime");
 	int rbSize = config_get_int(main->Config(), "AdvOut", "RecRBSize");
 	bool autoRemux = config_get_bool(main->Config(), "Video", "AutoRemux");
+	const char *hotkeyFocusType = config_get_string(
+		App()->GlobalConfig(), "General", "HotkeyFocusType");
+	bool dynBitrate =
+		config_get_bool(main->Config(), "Output", "DynamicBitrate");
 
 	loading = true;
 
@@ -2270,6 +2334,7 @@ void OBSBasicSettings::LoadAdvancedSettings()
 	ui->streamDelayPreserve->setChecked(preserveDelay);
 	ui->streamDelayEnable->setChecked(enableDelay);
 	ui->autoRemux->setChecked(autoRemux);
+	ui->dynBitrate->setChecked(dynBitrate);
 
 	SetComboByName(ui->colorFormat, videoColorFormat);
 	SetComboByName(ui->colorSpace, videoColorSpace);
@@ -2309,15 +2374,15 @@ void OBSBasicSettings::LoadAdvancedSettings()
 
 	ui->enableNewSocketLoop->setChecked(enableNewSocketLoop);
 	ui->enableLowLatencyMode->setChecked(enableLowLatencyMode);
+	ui->enableLowLatencyMode->setToolTip(
+		QTStr("Basic.Settings.Advanced.Network.TCPPacing.Tooltip"));
 
 	bool browserHWAccel = config_get_bool(App()->GlobalConfig(), "General",
 					      "BrowserHWAccel");
 	ui->browserHWAccel->setChecked(browserHWAccel);
 #endif
 
-	bool disableFocusHotkeys = config_get_bool(
-		App()->GlobalConfig(), "General", "DisableHotkeysInFocus");
-	ui->disableFocusHotkeys->setChecked(disableFocusHotkeys);
+	SetComboByValue(ui->hotkeyFocusType, hotkeyFocusType);
 
 	loading = false;
 }
@@ -2703,7 +2768,7 @@ void OBSBasicSettings::SaveGeneralSettings()
 		themeData = DEFAULT_THEME;
 
 	if (WidgetChanged(ui->theme)) {
-		config_set_string(GetGlobalConfig(), "General", "CurrentTheme",
+		config_set_string(GetGlobalConfig(), "General", "CurrentTheme2",
 				  QT_TO_UTF8(themeData));
 
 		App()->SetTheme(themeData.toUtf8().constData());
@@ -2760,6 +2825,9 @@ void OBSBasicSettings::SaveGeneralSettings()
 	config_set_bool(GetGlobalConfig(), "BasicWindow",
 			"WarnBeforeStoppingStream",
 			ui->warnBeforeStreamStop->isChecked());
+	config_set_bool(GetGlobalConfig(), "BasicWindow",
+			"WarnBeforeStoppingRecord",
+			ui->warnBeforeRecordStop->isChecked());
 
 	config_set_bool(GetGlobalConfig(), "BasicWindow", "HideProjectorCursor",
 			ui->hideProjectorCursor->isChecked());
@@ -2917,9 +2985,11 @@ void OBSBasicSettings::SaveAdvancedSettings()
 			browserHWAccel);
 #endif
 
-	bool disableFocusHotkeys = ui->disableFocusHotkeys->isChecked();
-	config_set_bool(App()->GlobalConfig(), "General",
-			"DisableHotkeysInFocus", disableFocusHotkeys);
+	if (WidgetChanged(ui->hotkeyFocusType)) {
+		QString str = GetComboData(ui->hotkeyFocusType);
+		config_set_string(App()->GlobalConfig(), "General",
+				  "HotkeyFocusType", QT_TO_UTF8(str));
+	}
 
 #ifdef __APPLE__
 	if (WidgetChanged(ui->disableOSXVSync)) {
@@ -2963,6 +3033,7 @@ void OBSBasicSettings::SaveAdvancedSettings()
 	SaveSpinBox(ui->reconnectMaxRetries, "Output", "MaxRetries");
 	SaveComboData(ui->bindToIP, "Output", "BindIP");
 	SaveCheckBox(ui->autoRemux, "Video", "AutoRemux");
+	SaveCheckBox(ui->dynBitrate, "Output", "DynamicBitrate");
 
 #if defined(_WIN32) || defined(__APPLE__) || HAVE_PULSEAUDIO
 	QString newDevice = ui->monitoringDevice->currentData().toString();
@@ -3142,6 +3213,8 @@ void OBSBasicSettings::SaveOutputSettings()
 			(ui->advOutRecTrack5->isChecked() ? (1 << 4) : 0) |
 			(ui->advOutRecTrack6->isChecked() ? (1 << 5) : 0));
 
+	config_set_int(main->Config(), "AdvOut", "FLVTrack", CurrentFLVTrack());
+
 	config_set_bool(main->Config(), "AdvOut", "FFOutputToFile",
 			ui->advOutFFType->currentIndex() == 0 ? true : false);
 	SaveEdit(ui->advOutFFRecPath, "AdvOut", "FFFilePath");
@@ -3224,7 +3297,7 @@ void OBSBasicSettings::SaveAudioSettings()
 	}
 
 	int sampleRate = 44100;
-	if (sampleRateStr == "48khz")
+	if (sampleRateStr == "48 kHz")
 		sampleRate = 48000;
 
 	if (WidgetChanged(ui->sampleRate))
@@ -3424,6 +3497,12 @@ void OBSBasicSettings::closeEvent(QCloseEvent *event)
 {
 	if (Changed() && !QueryChanges())
 		event->ignore();
+
+	if (forceAuthReload) {
+		main->auth->Save();
+		main->auth->Load();
+		forceAuthReload = false;
+	}
 }
 
 void OBSBasicSettings::on_theme_activated(int idx)
@@ -3464,7 +3543,8 @@ void OBSBasicSettings::on_buttonBox_clicked(QAbstractButton *button)
 	if (val == QDialogButtonBox::AcceptRole ||
 	    val == QDialogButtonBox::RejectRole) {
 		if (val == QDialogButtonBox::RejectRole) {
-			App()->SetTheme(savedTheme);
+			if (savedTheme != App()->GetTheme())
+				App()->SetTheme(savedTheme);
 #ifdef _WIN32
 			if (toggleAero)
 				SetAeroEnabled(!aeroWasDisabled);
@@ -3673,6 +3753,25 @@ static bool ValidResolutions(Ui::OBSBasicSettings *ui)
 	return true;
 }
 
+static int gcd(int a, int b)
+{
+	return b == 0 ? a : gcd(b, a % b);
+}
+
+static std::tuple<int, int> aspect_ratio(int cx, int cy)
+{
+	int common = gcd(cx, cy);
+	int newCX = cx / common;
+	int newCY = cy / common;
+
+	if (newCX == 8 && newCY == 5) {
+		newCX = 16;
+		newCY = 10;
+	}
+
+	return std::make_tuple(newCX, newCY);
+}
+
 void OBSBasicSettings::RecalcOutputResPixels(const char *resText)
 {
 	uint32_t newCX;
@@ -3682,6 +3781,13 @@ void OBSBasicSettings::RecalcOutputResPixels(const char *resText)
 	if (newCX && newCY) {
 		outputCX = newCX;
 		outputCY = newCY;
+
+		std::tuple<int, int> aspect = aspect_ratio(outputCX, outputCY);
+
+		ui->scaledAspect->setText(
+			QTStr("AspectRatio")
+				.arg(QString::number(std::get<0>(aspect)),
+				     QString::number(std::get<1>(aspect))));
 	}
 }
 
@@ -3713,6 +3819,14 @@ void OBSBasicSettings::on_baseResolution_editTextChanged(const QString &text)
 		uint32_t cx, cy;
 
 		ConvertResText(QT_TO_UTF8(baseResolution), cx, cy);
+
+		std::tuple<int, int> aspect = aspect_ratio(cx, cy);
+
+		ui->baseAspect->setText(
+			QTStr("AspectRatio")
+				.arg(QString::number(std::get<0>(aspect)),
+				     QString::number(std::get<1>(aspect))));
+
 		ResetDownscales(cx, cy);
 	}
 }
@@ -3756,10 +3870,22 @@ void OBSBasicSettings::AudioChanged()
 void OBSBasicSettings::AudioChangedRestart()
 {
 	if (!loading) {
-		audioChanged = true;
-		ui->audioMsg->setText(QTStr("Basic.Settings.ProgramRestart"));
-		sender()->setProperty("changed", QVariant(true));
-		EnableApplyButton(true);
+		int currentChannelIndex = ui->channelSetup->currentIndex();
+		int currentSampleRateIndex = ui->sampleRate->currentIndex();
+
+		if (currentChannelIndex != channelIndex ||
+		    currentSampleRateIndex != sampleRateIndex) {
+			audioChanged = true;
+			ui->audioMsg->setText(
+				QTStr("Basic.Settings.ProgramRestart"));
+			sender()->setProperty("changed", QVariant(true));
+			EnableApplyButton(true);
+		} else {
+			audioChanged = false;
+			ui->audioMsg->setText("");
+			sender()->setProperty("changed", QVariant(false));
+			EnableApplyButton(false);
+		}
 	}
 }
 
@@ -3924,18 +4050,20 @@ void OBSBasicSettings::AdvOutRecCheckWarnings()
 		Checked(ui->advOutRecTrack3) + Checked(ui->advOutRecTrack4) +
 		Checked(ui->advOutRecTrack5) + Checked(ui->advOutRecTrack6);
 
-	if (tracks == 0) {
-		errorMsg = QTStr("OutputWarnings.NoTracksSelected");
-
-	} else if (tracks > 1) {
-		warningMsg = QTStr("OutputWarnings.MultiTrackRecording");
-	}
-
 	bool useStreamEncoder = ui->advOutRecEncoder->currentIndex() == 0;
 	if (useStreamEncoder) {
 		if (!warningMsg.isEmpty())
 			warningMsg += "\n\n";
 		warningMsg += QTStr("OutputWarnings.CannotPause");
+	}
+
+	if (ui->advOutRecFormat->currentText().compare("flv") == 0) {
+		ui->advRecTrackWidget->setCurrentWidget(ui->flvTracks);
+	} else {
+		ui->advRecTrackWidget->setCurrentWidget(ui->recTracks);
+
+		if (tracks == 0)
+			errorMsg = QTStr("OutputWarnings.NoTracksSelected");
 	}
 
 	if (ui->advOutRecFormat->currentText().compare("mp4") == 0 ||
@@ -4511,6 +4639,41 @@ void OBSBasicSettings::on_disableOSXVSync_clicked()
 #endif
 }
 
+QIcon OBSBasicSettings::GetGeneralIcon() const
+{
+	return generalIcon;
+}
+
+QIcon OBSBasicSettings::GetStreamIcon() const
+{
+	return streamIcon;
+}
+
+QIcon OBSBasicSettings::GetOutputIcon() const
+{
+	return outputIcon;
+}
+
+QIcon OBSBasicSettings::GetAudioIcon() const
+{
+	return audioIcon;
+}
+
+QIcon OBSBasicSettings::GetVideoIcon() const
+{
+	return videoIcon;
+}
+
+QIcon OBSBasicSettings::GetHotkeysIcon() const
+{
+	return hotkeysIcon;
+}
+
+QIcon OBSBasicSettings::GetAdvancedIcon() const
+{
+	return advancedIcon;
+}
+
 void OBSBasicSettings::SetGeneralIcon(const QIcon &icon)
 {
 	ui->listWidget->item(0)->setIcon(icon);
@@ -4544,4 +4707,22 @@ void OBSBasicSettings::SetHotkeysIcon(const QIcon &icon)
 void OBSBasicSettings::SetAdvancedIcon(const QIcon &icon)
 {
 	ui->listWidget->item(6)->setIcon(icon);
+}
+
+int OBSBasicSettings::CurrentFLVTrack()
+{
+	if (ui->flvTrack1->isChecked())
+		return 1;
+	else if (ui->flvTrack2->isChecked())
+		return 2;
+	else if (ui->flvTrack3->isChecked())
+		return 3;
+	else if (ui->flvTrack4->isChecked())
+		return 4;
+	else if (ui->flvTrack5->isChecked())
+		return 5;
+	else if (ui->flvTrack6->isChecked())
+		return 6;
+
+	return 0;
 }

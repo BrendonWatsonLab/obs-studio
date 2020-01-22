@@ -34,6 +34,7 @@ struct gs_exports {
 	void (*device_destroy)(gs_device_t *device);
 	void (*device_enter_context)(gs_device_t *device);
 	void (*device_leave_context)(gs_device_t *device);
+	void *(*device_get_device_obj)(gs_device_t *device);
 	gs_swapchain_t *(*device_swapchain_create)(
 		gs_device_t *device, const struct gs_init_data *data);
 	void (*device_resize)(gs_device_t *device, uint32_t x, uint32_t y);
@@ -52,7 +53,7 @@ struct gs_exports {
 	gs_texture_t *(*device_voltexture_create)(
 		gs_device_t *device, uint32_t width, uint32_t height,
 		uint32_t depth, enum gs_color_format color_format,
-		uint32_t levels, const uint8_t **data, uint32_t flags);
+		uint32_t levels, const uint8_t *const *data, uint32_t flags);
 	gs_zstencil_t *(*device_zstencil_create)(
 		gs_device_t *device, uint32_t width, uint32_t height,
 		enum gs_zstencil_format format);
@@ -77,6 +78,8 @@ struct gs_exports {
 						       void *indices,
 						       size_t num,
 						       uint32_t flags);
+	gs_timer_t *(*device_timer_create)(gs_device_t *device);
+	gs_timer_range_t *(*device_timer_range_create)(gs_device_t *device);
 	enum gs_texture_type (*device_get_texture_type)(
 		const gs_texture_t *texture);
 	void (*device_load_vertexbuffer)(gs_device_t *device,
@@ -112,6 +115,7 @@ struct gs_exports {
 					   uint32_t src_w, uint32_t src_h);
 	void (*device_stage_texture)(gs_device_t *device, gs_stagesurf_t *dst,
 				     gs_texture_t *src);
+	void (*device_begin_frame)(gs_device_t *device);
 	void (*device_begin_scene)(gs_device_t *device);
 	void (*device_draw)(gs_device_t *device, enum gs_draw_mode draw_mode,
 			    uint32_t start_vert, uint32_t num_verts);
@@ -218,6 +222,16 @@ struct gs_exports {
 		const gs_indexbuffer_t *indexbuffer);
 	enum gs_index_type (*gs_indexbuffer_get_type)(
 		const gs_indexbuffer_t *indexbuffer);
+
+	void (*gs_timer_destroy)(gs_timer_t *timer);
+	void (*gs_timer_begin)(gs_timer_t *timer);
+	void (*gs_timer_end)(gs_timer_t *timer);
+	bool (*gs_timer_get_data)(gs_timer_t *timer, uint64_t *ticks);
+	void (*gs_timer_range_destroy)(gs_timer_range_t *range);
+	bool (*gs_timer_range_begin)(gs_timer_range_t *range);
+	bool (*gs_timer_range_end)(gs_timer_range_t *range);
+	bool (*gs_timer_range_get_data)(gs_timer_range_t *range, bool *disjoint,
+					uint64_t *frequency);
 
 	void (*gs_shader_destroy)(gs_shader_t *shader);
 	int (*gs_shader_get_num_params)(const gs_shader_t *shader);

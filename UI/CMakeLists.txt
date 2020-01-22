@@ -146,10 +146,14 @@ if(BROWSER_AVAILABLE_INTERNAL)
 	list(APPEND obs_PLATFORM_SOURCES
 		obf.c
 		auth-oauth.cpp
+		window-dock-browser.cpp
+		window-extra-browsers.cpp
 		)
 	list(APPEND obs_PLATFORM_HEADERS
 		obf.h
 		auth-oauth.hpp
+		window-dock-browser.hpp
+		window-extra-browsers.hpp
 		)
 
 	if(TWITCH_ENABLED)
@@ -192,6 +196,9 @@ if(MSVC)
 		../deps/libff/libff/ff-util.c
 		PROPERTIES COMPILE_FLAGS -Dinline=__inline
 		)
+	set(obs_PLATFORM_LIBRARIES
+		${obs_PLATFORM_LIBRARIES}
+		w32-pthreads)
 endif()
 
 set(obs_SOURCES
@@ -217,6 +224,7 @@ set(obs_SOURCES
 	window-basic-main-dropfiles.cpp
 	window-basic-main-profiles.cpp
 	window-basic-main-browser.cpp
+	window-basic-main-icons.cpp
 	window-basic-status-bar.cpp
 	window-basic-adv-audio.cpp
 	window-basic-transform.cpp
@@ -228,6 +236,7 @@ set(obs_SOURCES
 	window-remux.cpp
 	auth-base.cpp
 	source-tree.cpp
+	scene-tree.cpp
 	properties-view.cpp
 	focus-list.cpp
 	menu-button.cpp
@@ -236,6 +245,8 @@ set(obs_SOURCES
 	combobox-ignorewheel.cpp
 	spinbox-ignorewheel.cpp
 	record-button.cpp
+	ui-validation.cpp
+	url-push-button.cpp
 	volume-control.cpp
 	adv-audio-control.cpp
 	item-widget-helpers.cpp
@@ -279,6 +290,7 @@ set(obs_HEADERS
 	window-remux.hpp
 	auth-base.hpp
 	source-tree.hpp
+	scene-tree.hpp
 	properties-view.hpp
 	properties-view.moc.hpp
 	display-helpers.hpp
@@ -291,6 +303,8 @@ set(obs_HEADERS
 	menu-button.hpp
 	mute-checkbox.hpp
 	record-button.hpp
+	ui-validation.hpp
+	url-push-button.hpp
 	volume-control.hpp
 	adv-audio-control.hpp
 	item-widget-helpers.hpp
@@ -324,6 +338,7 @@ set(obs_UI
 	forms/OBSBasicSettings.ui
 	forms/OBSBasicSourceSelect.ui
 	forms/OBSBasicInteraction.ui
+	forms/OBSExtraBrowsers.ui
 	forms/OBSUpdate.ui
 	forms/OBSRemux.ui
 	forms/OBSAbout.ui)
@@ -335,6 +350,7 @@ qt5_wrap_ui(obs_UI_HEADERS ${obs_UI})
 qt5_add_resources(obs_QRC_SOURCES ${obs_QRC})
 
 add_executable(obs WIN32
+	obs.manifest
 	${obs_SOURCES}
 	${obs_HEADERS}
 	${obs_UI_HEADERS}
@@ -365,14 +381,6 @@ if (APPLE)
 	target_link_libraries(obs
 			Qt5::MacExtras)
 	set_target_properties(obs PROPERTIES LINK_FLAGS "-pagezero_size 10000 -image_base 100000000")
-	set_property(
-		TARGET obs
-		APPEND
-		PROPERTY INSTALL_RPATH
-		"/usr/local/Cellar/python3/3.6.4_2/Frameworks/Python.framework/Versions/3.6/lib/"
-		"/Library/Frameworks/Python.framework/Versions/3.6/lib/"
-		"/opt/local/Library/Frameworks/Python.framework/Versions/3.6/lib/"
-	)
 endif()
 
 define_graphic_modules(obs)

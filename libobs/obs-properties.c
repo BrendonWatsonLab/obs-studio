@@ -55,6 +55,7 @@ struct path_data {
 
 struct text_data {
 	enum obs_text_type type;
+	bool monospace;
 };
 
 struct list_data {
@@ -336,27 +337,44 @@ void obs_properties_remove_by_name(obs_properties_t *props, const char *name)
 			break;
 		}
 
+		if (cur->type == OBS_PROPERTY_GROUP) {
+			obs_properties_remove_by_name(
+				obs_property_group_content(cur), name);
+		}
+
 		prev = cur;
 		cur = cur->next;
+	}
+}
+
+void obs_properties_apply_settings_internal(obs_properties_t *props,
+					    obs_data_t *settings,
+					    obs_properties_t *realprops)
+{
+	struct obs_property *p;
+
+	p = props->first_property;
+	while (p) {
+		if (p->type == OBS_PROPERTY_GROUP) {
+			obs_properties_apply_settings_internal(
+				obs_property_group_content(p), settings,
+				realprops);
+		}
+		if (p->modified)
+			p->modified(realprops, p, settings);
+		else if (p->modified2)
+			p->modified2(p->priv, realprops, p, settings);
+		p = p->next;
 	}
 }
 
 void obs_properties_apply_settings(obs_properties_t *props,
 				   obs_data_t *settings)
 {
-	struct obs_property *p;
-
 	if (!props)
 		return;
 
-	p = props->first_property;
-	while (p) {
-		if (p->modified)
-			p->modified(props, p, settings);
-		else if (p->modified2)
-			p->modified2(p->priv, props, p, settings);
-		p = p->next;
-	}
+	obs_properties_apply_settings_internal(props, settings, props);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -961,6 +979,12 @@ enum obs_text_type obs_property_text_type(obs_property_t *p)
 	return data ? data->type : OBS_TEXT_DEFAULT;
 }
 
+enum obs_text_type obs_property_text_monospace(obs_property_t *p)
+{
+	struct text_data *data = get_type_data(p, OBS_PROPERTY_TEXT);
+	return data ? data->monospace : false;
+}
+
 enum obs_path_type obs_property_path_type(obs_property_t *p)
 {
 	struct path_data *data = get_type_data(p, OBS_PROPERTY_PATH);
@@ -1032,6 +1056,15 @@ void obs_property_float_set_suffix(obs_property_t *p, const char *suffix)
 
 	bfree(data->suffix);
 	data->suffix = bstrdup(suffix);
+}
+
+void obs_property_text_set_monospace(obs_property_t *p, bool monospace)
+{
+	struct text_data *data = get_type_data(p, OBS_PROPERTY_TEXT);
+	if (!data)
+		return;
+
+	data->monospace = monospace;
 }
 
 void obs_property_list_clear(obs_property_t *p)

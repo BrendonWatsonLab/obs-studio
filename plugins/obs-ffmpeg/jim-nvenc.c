@@ -240,8 +240,11 @@ static bool nvenc_update(void *data, obs_data_t *settings)
 		NV_ENC_RECONFIGURE_PARAMS params = {0};
 		params.version = NV_ENC_RECONFIGURE_PARAMS_VER;
 		params.reInitEncodeParams = enc->params;
+		params.resetEncoder = 1;
+		params.forceIDR = 1;
 
-		if (FAILED(nv.nvEncReconfigureEncoder(enc->session, &params))) {
+		if (NV_FAILED(nv.nvEncReconfigureEncoder(enc->session,
+							 &params))) {
 			return false;
 		}
 	}
@@ -446,6 +449,8 @@ static bool init_encoder(struct nvenc_data *enc, obs_data_t *settings)
 	if (lookahead && nv_get_cap(enc, NV_ENC_CAPS_SUPPORT_LOOKAHEAD)) {
 		config->rcParams.lookaheadDepth = 8;
 		config->rcParams.enableLookahead = 1;
+	} else {
+		lookahead = false;
 	}
 
 	/* psycho aq */
@@ -458,7 +463,8 @@ static bool init_encoder(struct nvenc_data *enc, obs_data_t *settings)
 	/* rate control               */
 
 	enc->can_change_bitrate =
-		nv_get_cap(enc, NV_ENC_CAPS_SUPPORT_DYN_BITRATE_CHANGE);
+		nv_get_cap(enc, NV_ENC_CAPS_SUPPORT_DYN_BITRATE_CHANGE) &&
+		!lookahead;
 
 	config->rcParams.rateControlMode = twopass ? NV_ENC_PARAMS_RC_VBR_HQ
 						   : NV_ENC_PARAMS_RC_VBR;
@@ -926,7 +932,7 @@ struct obs_encoder_info nvenc_info = {
 	.id = "jim_nvenc",
 	.codec = "h264",
 	.type = OBS_ENCODER_VIDEO,
-	.caps = OBS_ENCODER_CAP_PASS_TEXTURE,
+	.caps = OBS_ENCODER_CAP_PASS_TEXTURE | OBS_ENCODER_CAP_DYN_BITRATE,
 	.get_name = nvenc_get_name,
 	.create = nvenc_create,
 	.destroy = nvenc_destroy,

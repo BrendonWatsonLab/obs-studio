@@ -292,6 +292,9 @@ enum class gs_type {
 	gs_pixel_shader,
 	gs_duplicator,
 	gs_swap_chain,
+	gs_timer,
+	gs_timer_range,
+	gs_texture_3d,
 };
 
 struct gs_obj {
@@ -373,6 +376,31 @@ struct gs_index_buffer : gs_obj {
 			void *indices, size_t num, uint32_t flags);
 };
 
+struct gs_timer : gs_obj {
+	ComPtr<ID3D11Query> query_begin;
+	ComPtr<ID3D11Query> query_end;
+
+	void Rebuild(ID3D11Device *dev);
+
+	inline void Release()
+	{
+		query_begin.Release();
+		query_end.Release();
+	}
+
+	gs_timer(gs_device_t *device);
+};
+
+struct gs_timer_range : gs_obj {
+	ComPtr<ID3D11Query> query_disjoint;
+
+	void Rebuild(ID3D11Device *dev);
+
+	inline void Release() { query_disjoint.Release(); }
+
+	gs_timer_range(gs_device_t *device);
+};
+
 struct gs_texture : gs_obj {
 	gs_texture_type type;
 	uint32_t levels;
@@ -431,10 +459,10 @@ struct gs_texture_2d : gs_texture {
 	D3D11_TEXTURE2D_DESC td = {};
 
 	void InitSRD(vector<D3D11_SUBRESOURCE_DATA> &srd);
-	void InitTexture(const uint8_t **data);
+	void InitTexture(const uint8_t *const *data);
 	void InitResourceView();
 	void InitRenderTargets();
-	void BackupTexture(const uint8_t **data);
+	void BackupTexture(const uint8_t *const *data);
 	void GetSharedHandle(IDXGIResource *dxgi_res);
 
 	void RebuildSharedTextureFallback();
@@ -455,13 +483,58 @@ struct gs_texture_2d : gs_texture {
 
 	gs_texture_2d(gs_device_t *device, uint32_t width, uint32_t height,
 		      gs_color_format colorFormat, uint32_t levels,
-		      const uint8_t **data, uint32_t flags,
+		      const uint8_t *const *data, uint32_t flags,
 		      gs_texture_type type, bool gdiCompatible,
 		      bool nv12 = false);
 
 	gs_texture_2d(gs_device_t *device, ID3D11Texture2D *nv12,
 		      uint32_t flags);
 	gs_texture_2d(gs_device_t *device, uint32_t handle);
+};
+
+struct gs_texture_3d : gs_texture {
+	ComPtr<ID3D11Texture3D> texture;
+
+	uint32_t width = 0, height = 0, depth = 0;
+	uint32_t flags = 0;
+	DXGI_FORMAT dxgiFormat = DXGI_FORMAT_UNKNOWN;
+	bool isDynamic = false;
+	bool isShared = false;
+	bool genMipmaps = false;
+	uint32_t sharedHandle = GS_INVALID_HANDLE;
+
+	bool chroma = false;
+	bool acquired = false;
+
+	vector<vector<uint8_t>> data;
+	vector<D3D11_SUBRESOURCE_DATA> srd;
+	D3D11_TEXTURE3D_DESC td = {};
+
+	void InitSRD(vector<D3D11_SUBRESOURCE_DATA> &srd);
+	void InitTexture(const uint8_t *const *data);
+	void InitResourceView();
+	void BackupTexture(const uint8_t *const *data);
+	void GetSharedHandle(IDXGIResource *dxgi_res);
+
+	void RebuildSharedTextureFallback();
+	void Rebuild(ID3D11Device *dev);
+	void RebuildNV12_Y(ID3D11Device *dev);
+	void RebuildNV12_UV(ID3D11Device *dev);
+
+	inline void Release()
+	{
+		texture.Release();
+		shaderRes.Release();
+	}
+
+	inline gs_texture_3d() : gs_texture(GS_TEXTURE_3D, 0, GS_UNKNOWN) {}
+
+	gs_texture_3d(gs_device_t *device, uint32_t width, uint32_t height,
+		      uint32_t depth, gs_color_format colorFormat,
+		      uint32_t levels, const uint8_t *const *data,
+		      uint32_t flags);
+
+	gs_texture_3d(gs_device_t *device, uint32_t handle);
 };
 
 struct gs_zstencil_buffer : gs_obj {

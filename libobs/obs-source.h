@@ -43,6 +43,23 @@ enum obs_balance_type {
 	OBS_BALANCE_TYPE_LINEAR,
 };
 
+enum obs_icon_type {
+	OBS_ICON_TYPE_UNKNOWN,
+	OBS_ICON_TYPE_IMAGE,
+	OBS_ICON_TYPE_COLOR,
+	OBS_ICON_TYPE_SLIDESHOW,
+	OBS_ICON_TYPE_AUDIO_INPUT,
+	OBS_ICON_TYPE_AUDIO_OUTPUT,
+	OBS_ICON_TYPE_DESKTOP_CAPTURE,
+	OBS_ICON_TYPE_WINDOW_CAPTURE,
+	OBS_ICON_TYPE_GAME_CAPTURE,
+	OBS_ICON_TYPE_CAMERA,
+	OBS_ICON_TYPE_TEXT,
+	OBS_ICON_TYPE_MEDIA,
+	OBS_ICON_TYPE_BROWSER,
+	OBS_ICON_TYPE_CUSTOM,
+};
+
 /**
  * @name Source output flags
  *
@@ -138,6 +155,20 @@ enum obs_balance_type {
  * Source type is currently disabled and should not be shown to the user
  */
 #define OBS_SOURCE_CAP_DISABLED (1 << 10)
+
+/**
+ * Source type is obsolete (has been updated with new defaults/properties/etc)
+ */
+#define OBS_SOURCE_CAP_OBSOLETE OBS_SOURCE_CAP_DISABLED
+
+/**
+ * Source should enable monitoring by default.  Monitoring should be set by the
+ * frontend if this flag is set.
+ */
+#define OBS_SOURCE_MONITOR_BY_DEFAULT (1 << 11)
+
+/** Used internally for audio submixing */
+#define OBS_SOURCE_SUBMIX (1 << 12)
 
 /** @} */
 
@@ -458,6 +489,13 @@ struct obs_source_info {
 	 * @return          The properties data
 	 */
 	obs_properties_t *(*get_properties2)(void *data, void *type_data);
+
+	bool (*audio_mix)(void *data, uint64_t *ts_out,
+			  struct audio_output_data *audio_output,
+			  size_t channels, size_t sample_rate);
+
+	/** Icon type for the source */
+	enum obs_icon_type icon_type;
 };
 
 EXPORT void obs_register_source_s(const struct obs_source_info *info,

@@ -9,6 +9,7 @@ include_directories(
 	)
 
 set(media-playback_HEADERS
+	media-playback/closest-format.h
 	media-playback/decode.h
 	media-playback/media.h
 	)
@@ -22,11 +23,14 @@ add_library(media-playback STATIC
 	${media-playback_SOURCES}
 	)
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64le")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64(le)?")
 	target_compile_options(media-playback
 			PUBLIC
 			-mvsx)
 	add_compile_definitions(NO_WARN_X86_INTRINSICS)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+	target_compile_options(media-playback
+			PUBLIC)
 elseif(NOT MSVC)
 	target_compile_options(media-playback
 		PUBLIC

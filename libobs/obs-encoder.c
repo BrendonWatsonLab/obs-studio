@@ -349,7 +349,7 @@ obs_properties_t *obs_get_encoder_properties(const char *id)
 	const struct obs_encoder_info *ei = find_encoder(id);
 	if (ei && (ei->get_properties || ei->get_properties2)) {
 		obs_data_t *defaults = get_defaults(ei);
-		obs_properties_t *properties;
+		obs_properties_t *properties = NULL;
 
 		if (ei->get_properties2) {
 			properties = ei->get_properties2(NULL, ei->type_data);
@@ -981,14 +981,11 @@ static inline bool video_pause_check_internal(struct pause_data *pause,
 		return false;
 	}
 
-	if (ts == pause->ts_start) {
-		return true;
-
-	} else if (ts == pause->ts_end) {
+	if (ts == pause->ts_end) {
 		pause->ts_start = 0;
 		pause->ts_end = 0;
-	} else {
 
+	} else if (ts >= pause->ts_start) {
 		return true;
 	}
 
@@ -1188,6 +1185,12 @@ static void unpause_audio(struct pause_data *pause, struct audio_data *data,
 	uint64_t cutoff_frames = pause->ts_end - data->timestamp;
 	cutoff_frames = ns_to_audio_frames(sample_rate, cutoff_frames);
 
+	for (size_t i = 0; i < MAX_AV_PLANES; i++) {
+		if (!data->data[i])
+			break;
+		data->data[i] += cutoff_frames * sizeof(float);
+	}
+
 	data->timestamp = pause->ts_start;
 	data->frames = data->frames - (uint32_t)cutoff_frames;
 	pause->ts_start = 0;
@@ -1306,12 +1309,14 @@ void obs_encoder_packet_create_instance(struct encoder_packet *dst,
 	memcpy(dst->data, src->data, src->size);
 }
 
+/* OBS_DEPRECATED */
 void obs_duplicate_encoder_packet(struct encoder_packet *dst,
 				  const struct encoder_packet *src)
 {
 	obs_encoder_packet_create_instance(dst, src);
 }
 
+/* OBS_DEPRECATED */
 void obs_free_encoder_packet(struct encoder_packet *packet)
 {
 	obs_encoder_packet_release(packet);

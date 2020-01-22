@@ -106,7 +106,7 @@ static inline GLenum convert_gs_internal_format(enum gs_color_format format)
 	case GS_RG32F:
 		return GL_RG32F;
 	case GS_R8G8:
-		return GL_R16;
+		return GL_RG8;
 	case GS_R16F:
 		return GL_R16F;
 	case GS_R32F:
@@ -144,17 +144,17 @@ static inline GLenum get_gl_format_type(enum gs_color_format format)
 	case GS_R16:
 		return GL_UNSIGNED_SHORT;
 	case GS_RGBA16F:
-		return GL_UNSIGNED_SHORT;
+		return GL_HALF_FLOAT;
 	case GS_RGBA32F:
 		return GL_FLOAT;
 	case GS_RG16F:
-		return GL_UNSIGNED_SHORT;
+		return GL_HALF_FLOAT;
 	case GS_RG32F:
 		return GL_FLOAT;
 	case GS_R8G8:
-		return GL_UNSIGNED_SHORT;
+		return GL_UNSIGNED_BYTE;
 	case GS_R16F:
-		return GL_UNSIGNED_SHORT;
+		return GL_HALF_FLOAT;
 	case GS_R32F:
 		return GL_FLOAT;
 	case GS_DXT1:
@@ -396,6 +396,10 @@ static inline void samplerstate_release(gs_samplerstate_t *ss)
 		bfree(ss);
 }
 
+struct gs_timer {
+	GLuint queries[2];
+};
+
 struct gs_shader_param {
 	enum gs_shader_param_type type;
 
@@ -519,6 +523,16 @@ struct gs_texture_2d {
 
 	uint32_t width;
 	uint32_t height;
+	bool gen_mipmaps;
+	GLuint unpack_buffer;
+};
+
+struct gs_texture_3d {
+	struct gs_texture base;
+
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
 	bool gen_mipmaps;
 	GLuint unpack_buffer;
 };

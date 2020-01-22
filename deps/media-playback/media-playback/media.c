@@ -48,6 +48,12 @@ static inline enum video_format convert_pixel_format(int f)
 		return VIDEO_FORMAT_BGRA;
 	case AV_PIX_FMT_BGR0:
 		return VIDEO_FORMAT_BGRX;
+	case AV_PIX_FMT_YUVA420P:
+		return VIDEO_FORMAT_I40A;
+	case AV_PIX_FMT_YUVA422P:
+		return VIDEO_FORMAT_I42A;
+	case AV_PIX_FMT_YUVA444P:
+		return VIDEO_FORMAT_YUVA;
 	default:;
 	}
 
@@ -133,7 +139,7 @@ static int mp_media_next_packet(mp_media_t *media)
 
 	int ret = av_read_frame(media->fmt, &pkt);
 	if (ret < 0) {
-		if (ret != AVERROR_EOF)
+		if (ret != AVERROR_EOF && ret != AVERROR_EXIT)
 			blog(LOG_WARNING, "MP: av_read_frame failed: %s (%d)",
 			     av_err2str(ret), ret);
 		return ret;
@@ -224,7 +230,7 @@ static bool mp_media_prepare_frames(mp_media_t *m)
 	while (!mp_media_ready_to_start(m)) {
 		if (!m->eof) {
 			int ret = mp_media_next_packet(m);
-			if (ret == AVERROR_EOF)
+			if (ret == AVERROR_EOF || ret == AVERROR_EXIT)
 				m->eof = true;
 			else if (ret < 0)
 				return false;
@@ -571,8 +577,10 @@ static bool init_avformat(mp_media_t *m)
 		av_dict_set_int(&opts, "buffer_size", m->buffering, 0);
 
 	m->fmt = avformat_alloc_context();
-	m->fmt->interrupt_callback.callback = interrupt_callback;
-	m->fmt->interrupt_callback.opaque = m;
+	if (!m->is_local_file) {
+		m->fmt->interrupt_callback.callback = interrupt_callback;
+		m->fmt->interrupt_callback.opaque = m;
+	}
 
 	int ret = avformat_open_input(&m->fmt, m->path, format,
 				      opts ? &opts : NULL);
@@ -722,9 +730,11 @@ bool mp_media_init(mp_media_t *media, const struct mp_media_info *info)
 
 	static bool initialized = false;
 	if (!initialized) {
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 9, 100)
 		av_register_all();
-		avdevice_register_all();
 		avcodec_register_all();
+#endif
+		avdevice_register_all();
 		avformat_network_init();
 		initialized = true;
 	}

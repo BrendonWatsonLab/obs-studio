@@ -462,10 +462,14 @@ static inline bool item_texture_enabled(const struct obs_scene_item *item)
 
 static void render_item_texture(struct obs_scene_item *item)
 {
+	gs_texture_t *tex = gs_texrender_get_texture(item->item_render);
+	if (!tex) {
+		return;
+	}
+
 	GS_DEBUG_MARKER_BEGIN(GS_DEBUG_COLOR_ITEM_TEXTURE,
 			      "render_item_texture");
 
-	gs_texture_t *tex = gs_texrender_get_texture(item->item_render);
 	gs_effect_t *effect = obs->video.default_effect;
 	enum obs_scale_type type = item->scale_filter;
 	uint32_t cx = gs_texture_get_width(tex);
@@ -501,9 +505,9 @@ static void render_item_texture(struct obs_scene_item *item)
 			scale_param = gs_effect_get_param_by_name(
 				effect, "base_dimension");
 			if (scale_param) {
-				struct vec2 base_res_i = {(float)cx, (float)cy};
+				struct vec2 base_res = {(float)cx, (float)cy};
 
-				gs_effect_set_vec2(scale_param, &base_res_i);
+				gs_effect_set_vec2(scale_param, &base_res);
 			}
 
 			scale_i_param = gs_effect_get_param_by_name(

@@ -102,3 +102,8 @@ static inline Qt::ConnectionType WaitConnection()
 		       ? Qt::DirectConnection
 		       : Qt::BlockingQueuedConnection;
 }
+
+bool LineEditCanceled(QEvent *event);
+bool LineEditChanged(QEvent *event);
+
+void setThemeID(QWidget *widget, const QString &themeID);

@@ -42,117 +42,35 @@ static inline void make_video_info(struct video_output_info *vi,
 	vi->cache_size = 6;
 }
 
-#define PIXEL_SIZE 4
-
-#define GET_ALIGN(val, align) (((val) + (align - 1)) & ~(align - 1))
-
-static inline void set_420p_sizes(const struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t chroma_pixels;
-	uint32_t total_bytes;
-
-	chroma_pixels = (ovi->output_width * ovi->output_height / 4);
-	chroma_pixels = GET_ALIGN(chroma_pixels, PIXEL_SIZE);
-
-	video->plane_offsets[0] = 0;
-	video->plane_offsets[1] = ovi->output_width * ovi->output_height;
-	video->plane_offsets[2] = video->plane_offsets[1] + chroma_pixels;
-
-	video->plane_linewidth[0] = ovi->output_width;
-	video->plane_linewidth[1] = ovi->output_width / 2;
-	video->plane_linewidth[2] = ovi->output_width / 2;
-
-	video->plane_sizes[0] = video->plane_offsets[1];
-	video->plane_sizes[1] = video->plane_sizes[0] / 4;
-	video->plane_sizes[2] = video->plane_sizes[1];
-
-	total_bytes = video->plane_offsets[2] + chroma_pixels;
-
-	video->conversion_height =
-		(total_bytes / PIXEL_SIZE + ovi->output_width - 1) /
-		ovi->output_width;
-
-	video->conversion_height = GET_ALIGN(video->conversion_height, 2);
-	video->conversion_tech = "Planar420";
-}
-
-static inline void set_nv12_sizes(const struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t chroma_pixels;
-	uint32_t total_bytes;
-
-	chroma_pixels = (ovi->output_width * ovi->output_height / 2);
-	chroma_pixels = GET_ALIGN(chroma_pixels, PIXEL_SIZE);
-
-	video->plane_offsets[0] = 0;
-	video->plane_offsets[1] = ovi->output_width * ovi->output_height;
-
-	video->plane_linewidth[0] = ovi->output_width;
-	video->plane_linewidth[1] = ovi->output_width;
-
-	video->plane_sizes[0] = video->plane_offsets[1];
-	video->plane_sizes[1] = video->plane_sizes[0] / 2;
-
-	total_bytes = video->plane_offsets[1] + chroma_pixels;
-
-	video->conversion_height =
-		(total_bytes / PIXEL_SIZE + ovi->output_width - 1) /
-		ovi->output_width;
-
-	video->conversion_height = GET_ALIGN(video->conversion_height, 2);
-	video->conversion_tech = "NV12";
-}
-
-static inline void set_444p_sizes(const struct obs_video_info *ovi)
-{
-	struct obs_core_video *video = &obs->video;
-	uint32_t chroma_pixels;
-	uint32_t total_bytes;
-
-	chroma_pixels = (ovi->output_width * ovi->output_height);
-	chroma_pixels = GET_ALIGN(chroma_pixels, PIXEL_SIZE);
-
-	video->plane_offsets[0] = 0;
-	video->plane_offsets[1] = chroma_pixels;
-	video->plane_offsets[2] = chroma_pixels + chroma_pixels;
-
-	video->plane_linewidth[0] = ovi->output_width;
-	video->plane_linewidth[1] = ovi->output_width;
-	video->plane_linewidth[2] = ovi->output_width;
-
-	video->plane_sizes[0] = chroma_pixels;
-	video->plane_sizes[1] = chroma_pixels;
-	video->plane_sizes[2] = chroma_pixels;
-
-	total_bytes = video->plane_offsets[2] + chroma_pixels;
-
-	video->conversion_height =
-		(total_bytes / PIXEL_SIZE + ovi->output_width - 1) /
-		ovi->output_width;
-
-	video->conversion_height = GET_ALIGN(video->conversion_height, 2);
-	video->conversion_tech = "Planar444";
-}
-
 static inline void calc_gpu_conversion_sizes(const struct obs_video_info *ovi)
 {
-	obs->video.conversion_height = 0;
-	memset(obs->video.plane_offsets, 0, sizeof(obs->video.plane_offsets));
-	memset(obs->video.plane_sizes, 0, sizeof(obs->video.plane_sizes));
-	memset(obs->video.plane_linewidth, 0,
-	       sizeof(obs->video.plane_linewidth));
+	struct obs_core_video *video = &obs->video;
+
+	video->conversion_needed = false;
+	video->conversion_techs[0] = NULL;
+	video->conversion_techs[1] = NULL;
+	video->conversion_techs[2] = NULL;
+	video->conversion_width_i = 0.f;
 
 	switch ((uint32_t)ovi->output_format) {
 	case VIDEO_FORMAT_I420:
-		set_420p_sizes(ovi);
+		video->conversion_needed = true;
+		video->conversion_techs[0] = "Planar_Y";
+		video->conversion_techs[1] = "Planar_U_Left";
+		video->conversion_techs[2] = "Planar_V_Left";
+		video->conversion_width_i = 1.f / (float)ovi->output_width;
 		break;
 	case VIDEO_FORMAT_NV12:
-		set_nv12_sizes(ovi);
+		video->conversion_needed = true;
+		video->conversion_techs[0] = "NV12_Y";
+		video->conversion_techs[1] = "NV12_UV";
+		video->conversion_width_i = 1.f / (float)ovi->output_width;
 		break;
 	case VIDEO_FORMAT_I444:
-		set_444p_sizes(ovi);
+		video->conversion_needed = true;
+		video->conversion_techs[0] = "Planar_Y";
+		video->conversion_techs[1] = "Planar_U";
+		video->conversion_techs[2] = "Planar_V";
 		break;
 	}
 }
@@ -167,7 +85,7 @@ static bool obs_init_gpu_conversion(struct obs_video_info *ovi)
 					? gs_nv12_available()
 					: false;
 
-	if (!video->conversion_height) {
+	if (!video->conversion_needed) {
 		blog(LOG_INFO, "GPU conversion not available for format: %u",
 		     (unsigned int)ovi->output_format);
 		video->gpu_conversion = false;
@@ -183,23 +101,100 @@ static bool obs_init_gpu_conversion(struct obs_video_info *ovi)
 
 #ifdef _WIN32
 	if (video->using_nv12_tex) {
-		gs_texture_create_nv12(&video->convert_texture,
-				       &video->convert_uv_texture,
+		gs_texture_create_nv12(&video->convert_textures[0],
+				       &video->convert_textures[1],
 				       ovi->output_width, ovi->output_height,
 				       GS_RENDER_TARGET | GS_SHARED_KM_TEX);
-		if (!video->convert_uv_texture)
-			return false;
 	} else {
 #endif
-		video->convert_texture = gs_texture_create(
-			ovi->output_width, video->conversion_height, GS_RGBA, 1,
-			NULL, GS_RENDER_TARGET);
+		video->convert_textures[0] =
+			gs_texture_create(ovi->output_width, ovi->output_height,
+					  GS_R8, 1, NULL, GS_RENDER_TARGET);
+
+		const struct video_output_info *info =
+			video_output_get_info(video->video);
+		switch (info->format) {
+		case VIDEO_FORMAT_I420:
+			video->convert_textures[1] = gs_texture_create(
+				ovi->output_width / 2, ovi->output_height / 2,
+				GS_R8, 1, NULL, GS_RENDER_TARGET);
+			video->convert_textures[2] = gs_texture_create(
+				ovi->output_width / 2, ovi->output_height / 2,
+				GS_R8, 1, NULL, GS_RENDER_TARGET);
+			if (!video->convert_textures[2])
+				return false;
+			break;
+		case VIDEO_FORMAT_NV12:
+			video->convert_textures[1] = gs_texture_create(
+				ovi->output_width / 2, ovi->output_height / 2,
+				GS_R8G8, 1, NULL, GS_RENDER_TARGET);
+			break;
+		case VIDEO_FORMAT_I444:
+			video->convert_textures[1] = gs_texture_create(
+				ovi->output_width, ovi->output_height, GS_R8, 1,
+				NULL, GS_RENDER_TARGET);
+			video->convert_textures[2] = gs_texture_create(
+				ovi->output_width, ovi->output_height, GS_R8, 1,
+				NULL, GS_RENDER_TARGET);
+			if (!video->convert_textures[2])
+				return false;
+			break;
+		default:
+			break;
+		}
 #ifdef _WIN32
 	}
 #endif
 
-	if (!video->convert_texture)
+	if (!video->convert_textures[0])
 		return false;
+	if (!video->convert_textures[1])
+		return false;
+
+	return true;
+}
+
+static bool obs_init_gpu_copy_surfaces(struct obs_video_info *ovi, size_t i)
+{
+	struct obs_core_video *video = &obs->video;
+
+	video->copy_surfaces[i][0] = gs_stagesurface_create(
+		ovi->output_width, ovi->output_height, GS_R8);
+	if (!video->copy_surfaces[i][0])
+		return false;
+
+	const struct video_output_info *info =
+		video_output_get_info(video->video);
+	switch (info->format) {
+	case VIDEO_FORMAT_I420:
+		video->copy_surfaces[i][1] = gs_stagesurface_create(
+			ovi->output_width / 2, ovi->output_height / 2, GS_R8);
+		if (!video->copy_surfaces[i][1])
+			return false;
+		video->copy_surfaces[i][2] = gs_stagesurface_create(
+			ovi->output_width / 2, ovi->output_height / 2, GS_R8);
+		if (!video->copy_surfaces[i][2])
+			return false;
+		break;
+	case VIDEO_FORMAT_NV12:
+		video->copy_surfaces[i][1] = gs_stagesurface_create(
+			ovi->output_width / 2, ovi->output_height / 2, GS_R8G8);
+		if (!video->copy_surfaces[i][1])
+			return false;
+		break;
+	case VIDEO_FORMAT_I444:
+		video->copy_surfaces[i][1] = gs_stagesurface_create(
+			ovi->output_width, ovi->output_height, GS_R8);
+		if (!video->copy_surfaces[i][1])
+			return false;
+		video->copy_surfaces[i][2] = gs_stagesurface_create(
+			ovi->output_width, ovi->output_height, GS_R8);
+		if (!video->copy_surfaces[i][2])
+			return false;
+		break;
+	default:
+		break;
+	}
 
 	return true;
 }
@@ -207,25 +202,29 @@ static bool obs_init_gpu_conversion(struct obs_video_info *ovi)
 static bool obs_init_textures(struct obs_video_info *ovi)
 {
 	struct obs_core_video *video = &obs->video;
-	uint32_t output_height = video->gpu_conversion
-					 ? video->conversion_height
-					 : ovi->output_height;
-	size_t i;
 
-	for (i = 0; i < NUM_TEXTURES; i++) {
+	for (size_t i = 0; i < NUM_TEXTURES; i++) {
 #ifdef _WIN32
 		if (video->using_nv12_tex) {
-			video->copy_surfaces[i] = gs_stagesurface_create_nv12(
-				ovi->output_width, ovi->output_height);
-			if (!video->copy_surfaces[i])
+			video->copy_surfaces[i][0] =
+				gs_stagesurface_create_nv12(ovi->output_width,
+							    ovi->output_height);
+			if (!video->copy_surfaces[i][0])
 				return false;
 
 		} else {
 #endif
-			video->copy_surfaces[i] = gs_stagesurface_create(
-				ovi->output_width, output_height, GS_RGBA);
-			if (!video->copy_surfaces[i])
-				return false;
+			if (video->gpu_conversion) {
+				if (!obs_init_gpu_copy_surfaces(ovi, i))
+					return false;
+			} else {
+				video->copy_surfaces[i][0] =
+					gs_stagesurface_create(
+						ovi->output_width,
+						ovi->output_height, GS_RGBA);
+				if (!video->copy_surfaces[i][0])
+					return false;
+			}
 #ifdef _WIN32
 		}
 #endif
@@ -465,23 +464,45 @@ static void obs_free_video(void)
 
 		gs_enter_context(video->graphics);
 
-		if (video->mapped_surface) {
-			gs_stagesurface_unmap(video->mapped_surface);
-			video->mapped_surface = NULL;
+		for (size_t c = 0; c < NUM_CHANNELS; c++) {
+			if (video->mapped_surfaces[c]) {
+				gs_stagesurface_unmap(
+					video->mapped_surfaces[c]);
+				video->mapped_surfaces[c] = NULL;
+			}
 		}
 
 		for (size_t i = 0; i < NUM_TEXTURES; i++) {
-			gs_stagesurface_destroy(video->copy_surfaces[i]);
-			video->copy_surfaces[i] = NULL;
+			for (size_t c = 0; c < NUM_CHANNELS; c++) {
+				if (video->copy_surfaces[i][c]) {
+					gs_stagesurface_destroy(
+						video->copy_surfaces[i][c]);
+					video->copy_surfaces[i][c] = NULL;
+				}
+			}
 		}
 
 		gs_texture_destroy(video->render_texture);
-		gs_texture_destroy(video->convert_texture);
-		gs_texture_destroy(video->convert_uv_texture);
+
+		for (size_t c = 0; c < NUM_CHANNELS; c++) {
+			if (video->convert_textures[c]) {
+				gs_texture_destroy(video->convert_textures[c]);
+				video->convert_textures[c] = NULL;
+			}
+		}
+
+		for (size_t i = 0; i < NUM_TEXTURES; i++) {
+			for (size_t c = 0; c < NUM_CHANNELS; c++) {
+				if (video->copy_surfaces[i][c]) {
+					gs_stagesurface_destroy(
+						video->copy_surfaces[i][c]);
+					video->copy_surfaces[i][c] = NULL;
+				}
+			}
+		}
+
 		gs_texture_destroy(video->output_texture);
 		video->render_texture = NULL;
-		video->convert_texture = NULL;
-		video->convert_uv_texture = NULL;
 		video->output_texture = NULL;
 
 		gs_leave_context();
@@ -686,6 +707,8 @@ static const char *obs_signals[] = {
 	"void source_deactivate(ptr source)",
 	"void source_show(ptr source)",
 	"void source_hide(ptr source)",
+	"void source_audio_activate(ptr source)",
+	"void source_audio_deactivate(ptr source)",
 	"void source_rename(ptr source, string new_name, string prev_name)",
 	"void source_volume(ptr source, in out float volume)",
 	"void source_volume_level(ptr source, float level, float magnitude, "
@@ -797,6 +820,20 @@ static inline void obs_free_hotkeys(void)
 extern const struct obs_source_info scene_info;
 extern const struct obs_source_info group_info;
 
+static const char *submix_name(void *unused)
+{
+	UNUSED_PARAMETER(unused);
+	return "Audio line (internal use only)";
+}
+
+const struct obs_source_info audio_line_info = {
+	.id = "audio_line",
+	.type = OBS_SOURCE_TYPE_INPUT,
+	.output_flags = OBS_SOURCE_AUDIO | OBS_SOURCE_CAP_DISABLED |
+			OBS_SOURCE_SUBMIX,
+	.get_name = submix_name,
+};
+
 extern void log_system_info(void);
 
 static bool obs_init(const char *locale, const char *module_config_path,
@@ -828,13 +865,15 @@ static bool obs_init(const char *locale, const char *module_config_path,
 	obs->locale = bstrdup(locale);
 	obs_register_source(&scene_info);
 	obs_register_source(&group_info);
+	obs_register_source(&audio_line_info);
 	add_default_module_paths();
 	return true;
 }
 
 #ifdef _WIN32
-extern void initialize_com(void);
+extern bool initialize_com(void);
 extern void uninitialize_com(void);
+static bool com_initialized = false;
 #endif
 
 /* Separate from actual context initialization
@@ -895,7 +934,7 @@ bool obs_startup(const char *locale, const char *module_config_path,
 	}
 
 #ifdef _WIN32
-	initialize_com();
+	com_initialized = initialize_com();
 #endif
 
 	success = obs_init(locale, module_config_path, store);
@@ -1010,7 +1049,8 @@ void obs_shutdown(void)
 	bfree(cmdline_args.argv);
 
 #ifdef _WIN32
-	uninitialize_com();
+	if (com_initialized)
+		uninitialize_com();
 #endif
 }
 
@@ -1616,7 +1656,7 @@ gs_effect_t *obs_get_base_effect(enum obs_base_effect effect)
 	return NULL;
 }
 
-/* DEPRECATED */
+/* OBS_DEPRECATED */
 gs_effect_t *obs_get_default_rect_effect(void)
 {
 	if (!obs)
@@ -1638,6 +1678,7 @@ proc_handler_t *obs_get_proc_handler(void)
 	return obs->procs;
 }
 
+/* OBS_DEPRECATED */
 void obs_render_main_view(void)
 {
 	if (!obs)
@@ -1733,15 +1774,22 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data)
 	double volume;
 	double balance;
 	int64_t sync;
+	uint32_t prev_ver;
+	uint32_t caps;
 	uint32_t flags;
 	uint32_t mixers;
 	int di_order;
 	int di_mode;
 	int monitoring_type;
 
-	source = obs_source_create(id, name, settings, hotkeys);
+	prev_ver = (uint32_t)obs_data_get_int(source_data, "prev_ver");
+
+	source = obs_source_create_set_last_ver(id, name, settings, hotkeys,
+						prev_ver);
 
 	obs_data_release(hotkeys);
+
+	caps = obs_source_get_output_flags(source);
 
 	obs_data_set_default_double(source_data, "volume", 1.0);
 	volume = obs_data_get_double(source_data, "volume");
@@ -1754,7 +1802,7 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data)
 	sync = obs_data_get_int(source_data, "sync");
 	obs_source_set_sync_offset(source, sync);
 
-	obs_data_set_default_int(source_data, "mixers", 0xF);
+	obs_data_set_default_int(source_data, "mixers", 0x3F);
 	mixers = (uint32_t)obs_data_get_int(source_data, "mixers");
 	obs_source_set_audio_mixers(source, mixers);
 
@@ -1795,6 +1843,15 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data)
 		source, (enum obs_deinterlace_field_order)di_order);
 
 	monitoring_type = (int)obs_data_get_int(source_data, "monitoring_type");
+	if (prev_ver < MAKE_SEMANTIC_VERSION(23, 2, 2)) {
+		if ((caps & OBS_SOURCE_MONITOR_BY_DEFAULT) != 0) {
+			/* updates older sources to enable monitoring
+			 * automatically if they added monitoring by default in
+			 * version 24 */
+			monitoring_type = OBS_MONITORING_TYPE_MONITOR_ONLY;
+			obs_source_set_audio_mixers(source, 0x3F);
+		}
+	}
 	obs_source_set_monitoring_type(
 		source, (enum obs_monitoring_type)monitoring_type);
 
@@ -1920,6 +1977,8 @@ obs_data_t *obs_save_source(obs_source_t *source)
 		source->context.hotkey_data = hotkeys;
 		hotkey_data = hotkeys;
 	}
+
+	obs_data_set_int(source_data, "prev_ver", LIBOBS_API_VER);
 
 	obs_data_set_string(source_data, "name", name);
 	obs_data_set_string(source_data, "id", id);

@@ -398,7 +398,7 @@ Scene Item Functions
 
 .. function:: void obs_sceneitem_get_box_transform(const obs_sceneitem_t *item, struct matrix4 *transform)
 
-   Gets the transform matrix of the scene item used for the bouding box
+   Gets the transform matrix of the scene item used for the bounding box
    or edges of the scene item.
 
 ---------------------
@@ -491,6 +491,13 @@ Scene Item Group Functions
    :param scene: Scene to find the group within
    :param name:  The name of the group to find
    :return:      The group scene item, or *NULL* if not found
+
+---------------------
+
+.. function:: obs_scene_t *obs_group_from_source(const obs_source_t *source)
+
+   :return: The group context, or *NULL* if not a group.  Does not
+            increase the reference
 
 ---------------------
 

@@ -24,6 +24,7 @@
 #include <QLayout>
 #include <QMessageBox>
 #include <QDataStream>
+#include <QKeyEvent>
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <QX11Info>
@@ -292,4 +293,45 @@ void ExecThreadedWithoutBlocking(std::function<void()> func,
 		ExecuteFuncSafeBlock(func);
 	else
 		ExecuteFuncSafeBlockMsgBox(func, title, text);
+}
+
+bool LineEditCanceled(QEvent *event)
+{
+	if (event->type() == QEvent::KeyPress) {
+		QKeyEvent *keyEvent = reinterpret_cast<QKeyEvent *>(event);
+		return keyEvent->key() == Qt::Key_Escape;
+	}
+
+	return false;
+}
+
+bool LineEditChanged(QEvent *event)
+{
+	if (event->type() == QEvent::KeyPress) {
+		QKeyEvent *keyEvent = reinterpret_cast<QKeyEvent *>(event);
+
+		switch (keyEvent->key()) {
+		case Qt::Key_Tab:
+		case Qt::Key_Backtab:
+		case Qt::Key_Enter:
+		case Qt::Key_Return:
+			return true;
+		}
+	} else if (event->type() == QEvent::FocusOut) {
+		return true;
+	}
+
+	return false;
+}
+
+void setThemeID(QWidget *widget, const QString &themeID)
+{
+	if (widget->property("themeID").toString() != themeID) {
+		widget->setProperty("themeID", themeID);
+
+		/* force style sheet recalculation */
+		QString qss = widget->styleSheet();
+		widget->setStyleSheet("/* */");
+		widget->setStyleSheet(qss);
+	}
 }
