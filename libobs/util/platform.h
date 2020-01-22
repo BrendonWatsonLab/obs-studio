@@ -158,6 +158,8 @@ EXPORT int os_chdir(const char *path);
 
 EXPORT uint64_t os_get_free_disk_space(const char *dir);
 
+//EXPORT long getMicrotime();
+
 #define MKDIR_EXISTS 1
 #define MKDIR_SUCCESS 0
 #define MKDIR_ERROR -1

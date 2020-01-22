@@ -25,6 +25,7 @@
 #include "bmem.h"
 #include "utf8.h"
 #include "dstr.h"
+#include <inttypes.h>
 
 FILE *os_wfopen(const wchar_t *path, const char *mode)
 {
@@ -709,7 +710,9 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 	struct tm *cur_time;
 	cur_time = localtime(&now);
 
-	const size_t spec_count = 23;
+	// the spec consists of arrays of length two. For format strings that match the C "strftime(...)" function, the second element is blank to indicate that it need not be replaced.
+	// Otherwise, it is replaced with the C strftime equivalent formatting command before being ran through strftime.
+	const size_t spec_count = 24;
 	static const char *spec[][2] = {
 		{"%CCYY", "%Y"}, {"%YY", "%y"}, {"%MM", "%m"}, {"%DD", "%d"},
 		{"%hh", "%H"},   {"%mm", "%M"}, {"%ss", "%S"}, {"%%", "%%"},
@@ -717,33 +720,65 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		{"%a", ""},      {"%A", ""},    {"%b", ""},    {"%B", ""},
 		{"%d", ""},      {"%H", ""},    {"%I", ""},    {"%m", ""},
 		{"%M", ""},      {"%p", ""},    {"%S", ""},    {"%y", ""},
-		{"%Y", ""},      {"%z", ""},    {"%Z", ""},
+		{"%Y", ""},      {"%z", ""},    {"%Z", ""},    {"%FULLDATETIME", ""},
 	};
 
+	// the convert[] char array holds the temporary C-strings that result from strftime parsing a porition of the format string to its resultant value.
 	char convert[128] = {0};
+	// the "dstr" structure is a OBS-Studio specific dynamic string struct.
+	// sf: holds the format string
 	struct dstr sf;
+	// c: holds the output
 	struct dstr c = {0};
 	size_t pos = 0;
 
+	// make a copy of the "format" string in the "sf" dstr
 	dstr_init_copy(&sf, format);
 
+	// length of 2**64 - 1, +1 for nul.
+	char completeTimeString[128];
+	// copy to buffer
+	os_getcurrenttime_string(completeTimeString);
+
+	// Iterate through the format string (which has been copied in the "sf" dstr structure.
 	while (pos < sf.len) {
+		// Iterate through each spec_count and parse for the symbol
+		// Stops if convert[0] is ever 1.
 		for (size_t i = 0; i < spec_count && !convert[0]; i++) {
+			// Get the length of the spec string.
 			size_t len = strlen(spec[i][0]);
 
+			// Get the pointer to the start of the format string
 			const char *cmp = sf.array + pos;
-
+			// Check to see if the currently considered portion of the string matches the spec
+			// astrcmp_n: "String comparison function for a specific number of characters."
 			if (astrcmp_n(cmp, spec[i][0], len) == 0) {
-				if (strlen(spec[i][1]))
-					strftime(convert, sizeof(convert),
-						 spec[i][1], cur_time);
-				else
-					strftime(convert, sizeof(convert),
-						 spec[i][0], cur_time);
-
+				if (strlen(spec[i][1])) {
+					// If the spec's second element has a non-zero length, use that
+					strftime(convert, sizeof(convert), spec[i][1], cur_time);
+				}					
+				else {
+					// Check if we're dealing with the custom Nanosecond string.
+					if (strcmp(spec[i][0], "%FULLDATETIME") == 0) {
+						// Custom nanosecond string
+						strncpy(convert,
+							completeTimeString,
+							sizeof(completeTimeString));
+						
+					} else {
+						// Otherwise, use the spec's first element
+						strftime(convert, sizeof(convert), spec[i][0], cur_time);
+					}
+				}
+					
+				// copies the string array "convert" to the dynamic string (dstr) "c".
 				dstr_copy(&c, convert);
-				if (c.len && valid_string(c.array))
+				// If every thing works out, replace the formatting symbol with the text
+				if (c.len && valid_string(c.array)) {
+					// replaces the text in "sf" with the new_text in "convert"
 					replace_text(&sf, pos, len, convert);
+					//TODO: how is "c" used? Just to check?
+				}
 			}
 		}
 
@@ -757,9 +792,11 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		}
 	}
 
+	// Remove spaces if needed
 	if (!space)
 		dstr_replace(&sf, " ", "_");
 
+	// Append file extension
 	dstr_cat_ch(&sf, '.');
 	dstr_cat(&sf, extension);
 	dstr_free(&c);
@@ -769,3 +806,14 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 	return sf.array;
 }
+
+
+///**
+// * Returns the current time in microseconds.
+// */
+//long getMicrotime()
+//{
+//	struct timeval currentTime;
+//	gettimeofday(&currentTime, NULL);
+//	return currentTime.tv_sec * (int)1e6 + currentTime.tv_usec;
+//}

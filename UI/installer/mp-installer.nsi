@@ -6,8 +6,8 @@ Unicode true
 !define APPNAME "OBS Studio"
 
 !ifndef APPVERSION
-!define APPVERSION "17.0.2"
-!define SHORTVERSION "17.0.2"
+!define APPVERSION "17.0.3"
+!define SHORTVERSION "17.0.3"
 !endif
 
 !define APPNAMEANDVERSION "OBS Studio ${SHORTVERSION}"
@@ -49,7 +49,7 @@ RequestExecutionLevel admin
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE PreReqCheck
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "new\core\data\obs-studio\license\gplv2.txt"
+!insertmacro MUI_PAGE_LICENSE "license\gplv2.txt"
 !insertmacro MUI_PAGE_DIRECTORY
 !ifdef FULL
 	!insertmacro MUI_PAGE_COMPONENTS

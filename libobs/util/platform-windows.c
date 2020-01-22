@@ -221,6 +221,18 @@ void os_sleep_ms(uint32_t duration)
 	Sleep(duration);
 }
 
+// Gets a complete timestring on windows platforms.
+// Added by Pho Hale on 7/25/2019
+// https://stackoverflow.com/questions/1695288/getting-the-current-time-in-milliseconds-from-the-system-clock-in-windows
+void os_getcurrenttime_string(char outputString[])
+{
+	// outputString: must pass in a character buffer of 84 characters or more.
+	SYSTEMTIME st;
+	GetSystemTime(&st);
+	sprintf(outputString, "%.4d%.2d%.2d-%.2d%.2d%.2d%.4d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+}
+
+
 uint64_t os_gettime_ns(void)
 {
 	LARGE_INTEGER current_time;
