@@ -715,7 +715,7 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 	// the spec consists of arrays of length two. For format strings that match the C "strftime(...)" function, the second element is blank to indicate that it need not be replaced.
 	// Otherwise, it is replaced with the C strftime equivalent formatting command before being ran through strftime.
-	const size_t spec_count = 24;
+	const size_t spec_count = 25;
 	static const char *spec[][2] = {
 		{"%CCYY", "%Y"}, {"%YY", "%y"}, {"%MM", "%m"}, {"%DD", "%d"},
 		{"%hh", "%H"},   {"%mm", "%M"}, {"%ss", "%S"}, {"%%", "%%"},
@@ -724,6 +724,7 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		{"%d", ""},      {"%H", ""},    {"%I", ""},    {"%m", ""},
 		{"%M", ""},      {"%p", ""},    {"%S", ""},    {"%y", ""},
 		{"%Y", ""},      {"%z", ""},    {"%Z", ""},    {"%FULLDATETIME", ""},
+		{"%NANOSEC", ""},
 	};
 
 	// the convert[] char array holds the temporary C-strings that result from strftime parsing a porition of the format string to its resultant value.
@@ -740,9 +741,7 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 	// length of 2**64 - 1, +1 for nul.
 	char completeTimeString[128];
-	// copy to buffer
-	os_getcurrenttime_string(completeTimeString);
-
+	
 	// Iterate through the format string (which has been copied in the "sf" dstr structure.
 	while (pos < sf.len) {
 		// Iterate through each spec_count and parse for the symbol
@@ -752,8 +751,6 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		for (size_t i = 0; i < spec_count && !convert[0]; i++) {
 			// Get the length of the spec string.
 			size_t len = strlen(spec[i][0]);
-
-
 			// Check to see if the currently considered portion of the string matches the spec
 			// astrcmp_n: "String comparison function for a specific number of characters."
 			// Get the pointer to the start of the format string
@@ -764,12 +761,23 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 				}					
 				else {
 					// Check if we're dealing with the custom Nanosecond string.
-					if (strcmp(spec[i][0], "%FULLDATETIME") == 0) {
-						// Custom nanosecond string
+					if (strcmp(spec[i][0],
+						   "%FULLDATETIME") == 0) {
+						// Custom human-readable datetime string
+						// copy to buffer
+						os_getcurrenttime_string(completeTimeString);
+
 						strncpy(convert,
 							completeTimeString,
 							sizeof(completeTimeString));
-						
+					} else if (strcmp(spec[i][0],
+							  "%NANOSEC") ==
+						   0) {
+						// Custom nanosecond string
+						os_get_current_nanoseconds_time_string(completeTimeString);
+						strncpy(convert,
+							completeTimeString,
+							sizeof(completeTimeString));
 					} else {
 						// Otherwise, use the spec's first element
 						strftime(convert, sizeof(convert), spec[i][0], cur_time);

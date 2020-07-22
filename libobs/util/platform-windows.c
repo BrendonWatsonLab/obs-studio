@@ -21,6 +21,7 @@
 #include <shlobj.h>
 #include <intrin.h>
 #include <psapi.h>
+#include <inttypes.h>
 
 #include "base.h"
 #include "platform.h"
@@ -235,6 +236,32 @@ void os_getcurrenttime_string(char outputString[])
 	sprintf(outputString, "%.4d%.2d%.2d-%.2d%.2d%.2d%.4d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 }
 
+// Gets a complete nanoseconds timestring using GetSystemTimePreciseAsFileTime on windows platforms.
+// Added by Pho Hale on 7/22/2020
+/* References:
+http://www.windowstimestamp.com/PartIIAdjustmentofSystemTime.pdf
+https://stackoverflow.com/questions/32470442/c-beginner-how-to-use-getsystemtimeasfiletime
+https://stackoverflow.com/questions/1566645/filetime-to-int64
+https://stackoverflow.com/questions/58039807/windows-api-get-micro-seconds-between-milli-seconds
+*/
+void os_get_current_nanoseconds_time_string(char outputString[])
+{
+	// outputString: must pass in a character buffer of 84 characters or more.
+	FILETIME ft = {0};
+
+	UINT64 ftLo = 0;
+	UINT64 ftHi = 0;
+	UINT64 myTime = 0;
+
+	GetSystemTimePreciseAsFileTime(&ft); // In UTC
+	
+	ftLo = ft.dwLowDateTime;
+	ftHi = ft.dwHighDateTime;
+	myTime = ftLo | (ftHi << 32uLL);
+
+	sprintf(outputString, "%" PRIu64 "", myTime);
+	return;
+}
 
 uint64_t os_gettime_ns(void)
 {
