@@ -246,27 +246,27 @@ void os_get_current_nanoseconds_time_string(char outputString[])
 
 	//WCHAR b[1][256] = {0};
 
-	//FILETIME ft = {0};
+	FILETIME ft = {0};
 	//SYSTEMTIME st = {0};
 
-	//UINT64 ftLo = 0;
-	//UINT64 ftHi = 0;
-	//UINT64 myTime = 0;
-	//UINT64 ms = 0;
-	//UINT64 us = 0;
-	//UINT64 ns = 0;
+	UINT64 ftLo = 0;
+	UINT64 ftHi = 0;
+	UINT64 myTime = 0;
+	UINT64 ms = 0;
+	UINT64 us = 0;
+	UINT64 ns = 0;
 
-	//GetSystemTimePreciseAsFileTime(&ft);
-
+	GetSystemTimePreciseAsFileTime(&ft); // In UTC
+	
 	//FileTimeToSystemTime(&ft, &st);
 
-	//ftLo = ft.dwLowDateTime;
-	//ftHi = ft.dwHighDateTime;
-	//myTime = ftLo | (ftHi << 32uLL);
+	ftLo = ft.dwLowDateTime;
+	ftHi = ft.dwHighDateTime;
+	myTime = ftLo | (ftHi << 32uLL);
 
-	//ms = (myTime % 10000000uLL) / 10000uLL;
-	//us = (myTime % 10000uLL) / 10uLL;
-	//ns = (myTime % 10uLL);
+	ms = (myTime % 10000000uLL) / 10000uLL;
+	us = (myTime % 10000uLL) / 10uLL;
+	ns = (myTime % 10uLL);
 
 	//if (ms != st.wMilliseconds) {
 
@@ -285,12 +285,30 @@ void os_get_current_nanoseconds_time_string(char outputString[])
 	//	st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
 	//	st.wSecond, ms, us, ns);
 
-	uint64_t currTime = os_gettime_ns();
+	//uint64_t currTime = os_gettime_ns();
+	//ULARGEINTEGER{ft.dwLowDateTime, ft.dwHighDateTime}.QuadPart
+	//uint64_t currTime = ULARGE_INTEGER{ft.dwLowDateTime, ft.dwHighDateTime}.QuadPart;
+	uint64_t currTime = myTime;
 	sprintf(outputString, "%" PRIu64 "", currTime);
 	//printf("%" PRIu64 "\n", currTime);
 
 	return;
 }
+
+//__int64 FileTimeToMicroseconds(const FILETIME &ft)
+//{
+//	return bit_cast<__int64, FILETIME>(ft) / 10;
+//}
+
+//uint64_t os_convert(const FILETIME &ac_FileTime)
+//{
+//	ULARGE_INTEGER lv_Large;
+//
+//	lv_Large.LowPart = ac_FileTime.dwLowDateTime;
+//	lv_Large.HighPart = ac_FileTime.dwHighDateTime;
+//
+//	return lv_Large.QuadPart;
+//}
 
 
 uint64_t os_gettime_ns(void)
