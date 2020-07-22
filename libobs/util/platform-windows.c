@@ -236,80 +236,32 @@ void os_getcurrenttime_string(char outputString[])
 	sprintf(outputString, "%.4d%.2d%.2d-%.2d%.2d%.2d%.4d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 }
 
-// Gets a complete nanoseconds timestring on windows platforms.
+// Gets a complete nanoseconds timestring using GetSystemTimePreciseAsFileTime on windows platforms.
 // Added by Pho Hale on 7/22/2020
-// https://stackoverflow.com/questions/58039807/windows-api-get-micro-seconds-between-milli-seconds
+/* References:
+http://www.windowstimestamp.com/PartIIAdjustmentofSystemTime.pdf
+https://stackoverflow.com/questions/32470442/c-beginner-how-to-use-getsystemtimeasfiletime
+https://stackoverflow.com/questions/1566645/filetime-to-int64
+https://stackoverflow.com/questions/58039807/windows-api-get-micro-seconds-between-milli-seconds
+*/
 void os_get_current_nanoseconds_time_string(char outputString[])
 {
 	// outputString: must pass in a character buffer of 84 characters or more.
-	//auto start = std::chrono::high_resolution_clock::now();
-
-	//WCHAR b[1][256] = {0};
-
 	FILETIME ft = {0};
-	//SYSTEMTIME st = {0};
 
 	UINT64 ftLo = 0;
 	UINT64 ftHi = 0;
 	UINT64 myTime = 0;
-	UINT64 ms = 0;
-	UINT64 us = 0;
-	UINT64 ns = 0;
 
 	GetSystemTimePreciseAsFileTime(&ft); // In UTC
 	
-	//FileTimeToSystemTime(&ft, &st);
-
 	ftLo = ft.dwLowDateTime;
 	ftHi = ft.dwHighDateTime;
 	myTime = ftLo | (ftHi << 32uLL);
 
-	ms = (myTime % 10000000uLL) / 10000uLL;
-	us = (myTime % 10000uLL) / 10uLL;
-	ns = (myTime % 10uLL);
-
-	//if (ms != st.wMilliseconds) {
-
-	//	//sprintf(outputString, "%.4d%.2d%.2d-%.2d%.2d%.2d%.4d",
-	//	//	st.wYear, st.wMonth, st.wDay, st.wHour,
-	//	//	st.wMinute, st.wSecond, st.wMilliseconds);
-
-	//	wprintf(L"ms:[%llu][0x%llX] != st.wMilliseconds:[%u][0x%X]\n",
-	//		ms, ms, st.wMilliseconds, st.wMilliseconds);
-	//}
-
-	//sprintf(outputString, "%.4d%.2d%.2d-%.2d%.2d%.2d%.4d",
-	//		st.wYear, st.wMonth, st.wDay, st.wHour,
-	//		st.wMinute, st.wSecond, ms, us, ns);
-	//wprintf(L"%u%02u%02u %02u:%02u:%02u:%03llu:%03llu:%llu\n",
-	//	st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
-	//	st.wSecond, ms, us, ns);
-
-	//uint64_t currTime = os_gettime_ns();
-	//ULARGEINTEGER{ft.dwLowDateTime, ft.dwHighDateTime}.QuadPart
-	//uint64_t currTime = ULARGE_INTEGER{ft.dwLowDateTime, ft.dwHighDateTime}.QuadPart;
-	uint64_t currTime = myTime;
-	sprintf(outputString, "%" PRIu64 "", currTime);
-	//printf("%" PRIu64 "\n", currTime);
-
+	sprintf(outputString, "%" PRIu64 "", myTime);
 	return;
 }
-
-//__int64 FileTimeToMicroseconds(const FILETIME &ft)
-//{
-//	return bit_cast<__int64, FILETIME>(ft) / 10;
-//}
-
-//uint64_t os_convert(const FILETIME &ac_FileTime)
-//{
-//	ULARGE_INTEGER lv_Large;
-//
-//	lv_Large.LowPart = ac_FileTime.dwLowDateTime;
-//	lv_Large.HighPart = ac_FileTime.dwHighDateTime;
-//
-//	return lv_Large.QuadPart;
-//}
-
 
 uint64_t os_gettime_ns(void)
 {
